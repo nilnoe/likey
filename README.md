@@ -72,8 +72,14 @@ swift scripts/webview-source-probe.swift      # 系统 WKWebView 执行运行时
 
 ## S7 .js 音源接入验收清单（G4）
 
-- [ ] 内置 Audius 音源：搜索真实在线曲目并完整播放
-- [ ] 内置 iTunes 试听源：搜索主流曲目并播放 30s 片段
+- [x] 内置 Audius 音源：搜索真实在线曲目 ✅（用户实机确认）
+- [ ] 内置 Audius 音源：完整播放（UA 修复已提交，待复测）
+- [x] 内置 iTunes 试听源：搜索主流曲目并播放 30s 片段 ✅（用户实机确认）
 - [ ] 内置示例音源可搜索并播放本地音乐库曲目（需先扫描音乐库）
 - [ ] 导入 lx-music 兼容 .js 音源后可搜索/播放（原生 HTTP 免 CORS）/取歌词
 - [ ] 音源脚本重启后保留；脚本报错不影响播放器其他功能
+
+### S7 实机排障记录（两处根因已修复）
+
+1. 搜索无结果 → `tauri-plugin-http` 默认权限允许 fetch 但**拒绝一切源**，capabilities 必须显式 `allow: ["https://*", "http://*"]`
+2. Audius 播放 403 → 播放取流路径未带 User-Agent（Audius CDN 校验），已为远端取流默认携带浏览器 UA
