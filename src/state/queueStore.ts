@@ -8,12 +8,20 @@ import {
 } from '../core/player/Queue'
 import { saveQueue, type RestoredQueue } from '../features/player/persistence'
 
-/** 远端 http(s) 曲目走原生插件 HTTP（免 CORS），其余（资产协议/文件）走默认实现。 */
+/**
+ * 默认浏览器 UA：部分音乐 CDN（Audius 等）校验 User-Agent，
+ * reqwest 默认不带 UA 会被 403；带 UA 实测返回 200 audio/mpeg。
+ * 对所有远端取流请求生效（音源脚本内的请求由脚本自行携带）。
+ */
+const BROWSER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+
+/** 远端 http(s) 曲目走原生插件 HTTP（免 CORS + 浏览器 UA），其余（资产协议/文件）走默认实现。 */
 async function readSourceNativeHttp(source: TrackSource): Promise<ArrayBuffer> {
   if (source.kind === 'url' && /^https?:\/\//i.test(source.url)) {
     try {
       const { fetch } = await import('@tauri-apps/plugin-http')
-      const response = await fetch(source.url)
+      const response = await fetch(source.url, { headers: { 'User-Agent': BROWSER_UA } })
       if (!response.ok) {
         throw new Error(`音频读取失败: HTTP ${response.status}`)
       }
