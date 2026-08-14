@@ -6,13 +6,29 @@ use lofty::probe::Probe;
 
 use crate::models::TrackMeta;
 
-pub const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "wav"];
+pub const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "wav", "m4a", "aac"];
 
 pub fn is_audio_file(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| AUDIO_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_audio_file;
+    use std::path::Path;
+
+    #[test]
+    fn recognizes_supported_extensions() {
+        for ext in ["mp3", "flac", "wav", "m4a", "aac"] {
+            assert!(is_audio_file(Path::new(&format!("song.{ext}"))));
+        }
+        for ext in ["mp4", "ogg", "txt", "jpg"] {
+            assert!(!is_audio_file(Path::new(&format!("file.{ext}"))));
+        }
+    }
 }
 
 fn fallback_title(path: &Path) -> String {

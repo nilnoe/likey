@@ -201,7 +201,7 @@ export default function App() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="audio/*,.mp3,.flac,.wav"
+          accept="audio/*,.mp3,.flac,.wav,.m4a,.aac"
           multiple
           className="hidden-input"
           onChange={(event) => void handleFiles(event.target.files)}

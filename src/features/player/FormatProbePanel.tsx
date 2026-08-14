@@ -12,6 +12,8 @@ const PROBE_FORMATS: readonly ProbeFormatEntry[] = [
   { format: 'mp3', label: 'MP3', url: '/fixtures/tone.mp3' },
   { format: 'flac', label: 'FLAC', url: '/fixtures/tone.flac' },
   { format: 'wav', label: 'WAV', url: '/fixtures/tone.wav' },
+  { format: 'm4a', label: 'M4A', url: '/fixtures/tone.m4a' },
+  { format: 'aac', label: 'AAC', url: '/fixtures/tone.aac' },
 ]
 
 /**

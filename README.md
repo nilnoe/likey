@@ -1,6 +1,6 @@
 # Likey
 
-千千静听（TTPlayer）风格的律动音乐播放器。本地音乐库 + 频谱律动可视化 + LRC 歌词 + 皮肤系统 + **.js 音源接入**（lx-music 兼容协议）。
+千千静听（TTPlayer）风格的律动音乐播放器。本地音乐库（mp3 / flac / wav / m4a / aac） + 频谱律动可视化 + LRC 歌词 + 皮肤系统 + **.js 音源接入**（lx-music 兼容协议）。
 
 - 技术栈：Tauri 2 + React 19 + Vite + TypeScript（strict）
 - 设计文档：[docs/DESIGN.md](docs/DESIGN.md)

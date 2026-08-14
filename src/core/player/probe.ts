@@ -1,6 +1,6 @@
 import type { DecodedBuffer } from './PlayerBackend'
 
-export type AudioFormat = 'mp3' | 'flac' | 'wav'
+export type AudioFormat = 'mp3' | 'flac' | 'wav' | 'm4a' | 'aac'
 
 export interface ProbeResult {
   readonly format: AudioFormat
