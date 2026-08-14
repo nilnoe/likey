@@ -314,9 +314,11 @@ export interface SpectrumFrame {
   readonly bars: Float32Array
   /** 原始频域数据（分析用），长度 = analyser.frequencyBinCount */
   readonly raw: Uint8Array
+  /** 时域波形采样（0..255，中点 128），长度 = analyser.fftSize，供波形线叠加 */
+  readonly waveform: Uint8Array
   /** 低频能量（20–250Hz），节拍检测输入 */
   readonly lowEnergy: number
-  /** 中频、高频能量（备用，供未来视觉模式） */
+  /** 中频、高频能量（驱动背景氛围光晕色温） */
   readonly midEnergy: number
   readonly highEnergy: number
 }
@@ -435,16 +437,18 @@ export type VisualizerKind = 'spectrum-bars' | /* 二期 */ 'particles' | 'oscil
 ### 6.2 频谱柱渲染参数（皮肤协议直接映射此结构）
 
 ```ts
-// core/visualizer/types.ts（与皮肤 JSON 的 spectrum 字段同构）
+// core/visualizer/SpectrumStyle.ts（与皮肤 JSON 的 spectrumStyle 字段同构）
 export interface SpectrumStyle {
   readonly barCount: number // 32 | 48 | 64
-  readonly mirror: boolean // 水平镜面对称（千千静听经典）
+  readonly mirror: boolean // 四象限镜面对称（千千静听经典）
   readonly rounded: boolean // 圆角柱
   readonly gap: number // 条间距（px）
   readonly gradient: readonly [string, string] // [底色, 顶色]
   readonly peakHold: boolean // 峰值保持线开关
   readonly fallSpeed: number // 0.85–0.95，越大拖尾越长
   readonly beatPulse: boolean // beat 时整体脉冲
+  readonly glow: boolean // 背景氛围光晕（色温随频段 + 节拍呼吸）
+  readonly waveform: boolean // 时域波形线叠加
 }
 ```
 
@@ -452,8 +456,11 @@ export interface SpectrumStyle {
 
 - 单一 `requestAnimationFrame` 循环，多渲染器复用同一循环（未来歌词卡拉OK 进度也挂同一循环）。
 - 每帧：`nextFrame()` → 平滑 → 画柱 + 峰值线 → 轮询 `beatDetector` → 若 hit 则注入脉冲（scale 1.0→1.06→回弹）。
+- 四象限镜像：Q2/Q4 主渐变，Q1/Q3 同色 45% 透明度倒影（`color.ts hexWithAlpha`）。
+- 背景氛围光晕：`ambient.ts computeGlow` 依据三段能量算色温（低频暖/高频冷，指数平滑）与透明度（含节拍呼吸），中心径向渐变铺底。
+- 时域波形线：fftSize 2048 抽稀至 ≤512 点，两次描边（宽低透明辉光 + 细高透明主线）叠在最上层。
 - Canvas 尺寸按 `dpr` 缩放，`getBoundingClientRect` 变化时重设。
-- **性能预算：单帧渲染 ≤ 8ms，空闲时 CPU < 3%，播放时 < 5%**。Canvas 2D 画 48–64 根柱 + 峰值线远低于此预算，无 WebGL 必要。
+- **性能预算：单帧渲染 ≤ 8ms，空闲时 CPU < 3%，播放时 < 5%**。Canvas 2D 画 48–64 根柱 + 峰值线 + 光晕/波形远低于此预算，无 WebGL 必要。
 
 ---
 
@@ -606,7 +613,7 @@ export interface Skin {
     readonly lyricProgress: string // 卡拉OK 渐变色
     readonly lyricInactive: string
   }
-  readonly spectrum: SpectrumStyle // 与 §6.2 同构，直接注入渲染器
+  readonly spectrumStyle: SpectrumStyle // 与 §6.2 同构，直接注入渲染器；glow/waveform 缺省为 true
   readonly lyrics: {
     readonly fontSize: number
     readonly lineHeight: number

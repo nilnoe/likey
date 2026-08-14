@@ -8,6 +8,10 @@ export interface SpectrumStyle {
   readonly peakHold: boolean
   readonly fallSpeed: number
   readonly beatPulse: boolean
+  /** 背景氛围光晕：色温随频段、透明度随能量 + 节拍呼吸 */
+  readonly glow: boolean
+  /** 时域波形线叠加 */
+  readonly waveform: boolean
 }
 
 export const DEFAULT_SPECTRUM_STYLE: SpectrumStyle = {
@@ -19,6 +23,8 @@ export const DEFAULT_SPECTRUM_STYLE: SpectrumStyle = {
   peakHold: true,
   fallSpeed: 0.9,
   beatPulse: true,
+  glow: true,
+  waveform: true,
 }
 
 /** 峰值线每帧下落量（0..1 刻度）。 */

@@ -7,13 +7,23 @@ import {
   updatePeaks,
   type SpectrumStyle,
 } from './SpectrumStyle'
-import { hexWithAlpha } from './color'
+import { computeGlow } from './ambient'
+import { hexWithAlpha, type Rgb } from './color'
 
 const PEAK_LINE_HEIGHT = 2
 const PEAK_COLOR = 'rgba(255, 255, 255, 0.75)'
 /** Q1/Q3 倒影象限的透明度：同主渐变淡化为水面倒影。 */
 const FADE_ALPHA = 0.45
 const FADED_PEAK_COLOR = 'rgba(255, 255, 255, 0.35)'
+/** 时域波形线：宽低透明「辉光」描边 + 细高透明主线。 */
+const WAVEFORM_GLOW_COLOR = 'rgba(255, 255, 255, 0.12)'
+const WAVEFORM_GLOW_WIDTH = 5
+const WAVEFORM_CORE_COLOR = 'rgba(255, 255, 255, 0.45)'
+const WAVEFORM_CORE_WIDTH = 1.5
+/** 波形线单帧最多采样点数（时域 fftSize 2048 → 抽稀到 512）。 */
+const WAVEFORM_MAX_POINTS = 512
+/** 波形线振幅占半高的比例。 */
+const WAVEFORM_AMPLITUDE = 0.7
 
 /**
  * 千千静听风频谱柱渲染器（Canvas 2D）。
@@ -28,6 +38,11 @@ export class SpectrumBarRenderer {
   private pulse = 0
   private gradient: CanvasGradient | null = null
   private fadedGradient: CanvasGradient | null = null
+  private glowWarmth = 0
+  private glowIntensity = 0
+  private glowRgb: Rgb = [0, 0, 0]
+  private glowAlpha = 0
+  private waveform: Uint8Array = new Uint8Array(0)
 
   constructor(style: Partial<SpectrumStyle> = {}) {
     this.style = { ...DEFAULT_SPECTRUM_STYLE, ...style }
@@ -81,6 +96,18 @@ export class SpectrumBarRenderer {
       updatePeaks(this.peaks, this.values, PEAK_DROP_PER_FRAME)
     }
     this.pulse = computePulse(this.pulse, this.style.beatPulse ? beatStrength : 0)
+    const glow = computeGlow(
+      { warmth: this.glowWarmth, intensity: this.glowIntensity },
+      frame.lowEnergy,
+      frame.midEnergy,
+      frame.highEnergy,
+      this.pulse,
+    )
+    this.glowWarmth = glow.state.warmth
+    this.glowIntensity = glow.state.intensity
+    this.glowRgb = glow.rgb
+    this.glowAlpha = glow.alpha
+    this.waveform = frame.waveform
     this.draw()
   }
 
@@ -89,6 +116,9 @@ export class SpectrumBarRenderer {
     if (ctx === null) return
     const { width, height } = ctx.canvas
     ctx.clearRect(0, 0, width, height)
+    if (this.style.glow) {
+      this.drawGlow(width, height)
+    }
 
     const mirror = this.style.mirror
     const count = this.values.length
@@ -139,6 +169,54 @@ export class SpectrumBarRenderer {
         }
       }
     }
+
+    if (this.style.waveform) {
+      this.drawWaveform(width, height)
+    }
+  }
+
+  /** 背景氛围光晕：中心径向渐变，色温/透明度由 computeGlow 逐帧驱动。 */
+  private drawGlow(width: number, height: number): void {
+    const ctx = this.ctx
+    if (ctx === null) return
+    const r = this.glowRgb[0] ?? 0
+    const g = this.glowRgb[1] ?? 0
+    const b = this.glowRgb[2] ?? 0
+    const radius = Math.max(width, height) * 0.55
+    const glow = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, radius)
+    glow.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${this.glowAlpha})`)
+    glow.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`)
+    ctx.fillStyle = glow
+    ctx.beginPath()
+    ctx.rect(0, 0, width, height)
+    ctx.fill()
+  }
+
+  /** 时域波形线：居中横贯的示波器细线，两次描边做出辉光感。 */
+  private drawWaveform(width: number, height: number): void {
+    const ctx = this.ctx
+    if (ctx === null) return
+    const samples = this.waveform
+    if (samples.length < 2) return
+    const stride = Math.max(1, Math.ceil(samples.length / WAVEFORM_MAX_POINTS))
+    const count = Math.ceil(samples.length / stride)
+    const amp = (height / 2) * WAVEFORM_AMPLITUDE
+    const baseY = height / 2
+    ctx.beginPath()
+    let j = 0
+    for (let i = 0; i < samples.length; i += stride, j++) {
+      const v = ((samples[i] ?? 128) - 128) / 128
+      const x = (j / (count - 1)) * width
+      const y = baseY + v * amp
+      if (j === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.strokeStyle = WAVEFORM_GLOW_COLOR
+    ctx.lineWidth = WAVEFORM_GLOW_WIDTH
+    ctx.stroke()
+    ctx.strokeStyle = WAVEFORM_CORE_COLOR
+    ctx.lineWidth = WAVEFORM_CORE_WIDTH
+    ctx.stroke()
   }
 
   private drawBar(x: number, y: number, w: number, h: number): void {

@@ -42,6 +42,9 @@ class FakeBackend implements PlayerBackend {
     getByteFrequencyData(array: Uint8Array): void {
       array.fill(0)
     },
+    getByteTimeDomainData(array: Uint8Array): void {
+      array.fill(128)
+    },
   }
 
   get context() {

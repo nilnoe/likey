@@ -122,6 +122,15 @@ export function parseSkin(json: string): SkinParseResult {
   if (mirror === null || rounded === null || peakHold === null || beatPulse === null) {
     return fail('spectrumStyle 的 mirror/rounded/peakHold/beatPulse 必须是布尔值')
   }
+  // glow/waveform 为可选字段：缺省走渲染器默认值（true），提供则必须是布尔
+  const glow = readBoolean(spectrumRaw, 'glow') ?? true
+  if ('glow' in spectrumRaw && typeof spectrumRaw['glow'] !== 'boolean') {
+    return fail('spectrumStyle.glow 必须是布尔值')
+  }
+  const waveform = readBoolean(spectrumRaw, 'waveform') ?? true
+  if ('waveform' in spectrumRaw && typeof spectrumRaw['waveform'] !== 'boolean') {
+    return fail('spectrumStyle.waveform 必须是布尔值')
+  }
 
   const lyricsRaw = data['lyrics']
   if (!isRecord(lyricsRaw)) return fail('缺少 lyrics 对象')
@@ -162,6 +171,8 @@ export function parseSkin(json: string): SkinParseResult {
         peakHold,
         fallSpeed,
         beatPulse,
+        glow,
+        waveform,
       },
       lyrics: { fontSize, lineHeight },
     },

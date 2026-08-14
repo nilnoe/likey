@@ -38,6 +38,22 @@ describe('parseSkin', () => {
       expect(result.skin.id).toBe('test')
       expect(result.skin.spectrumStyle.barCount).toBe(48)
       expect(result.skin.colors.spectrum).toEqual(['#00ff00', '#ff00ff'])
+      // 缺省时 glow/waveform 走默认值 true
+      expect(result.skin.spectrumStyle.glow).toBe(true)
+      expect(result.skin.spectrumStyle.waveform).toBe(true)
+    }
+  })
+
+  it('accepts explicit glow/waveform toggles', () => {
+    const skin = {
+      ...VALID_SKIN,
+      spectrumStyle: { ...VALID_SKIN.spectrumStyle, glow: false, waveform: false },
+    }
+    const result = parseSkin(JSON.stringify(skin))
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.skin.spectrumStyle.glow).toBe(false)
+      expect(result.skin.spectrumStyle.waveform).toBe(false)
     }
   })
 
@@ -70,6 +86,11 @@ describe('parseSkin', () => {
     expect(parseSkin(JSON.stringify(badSpeed))).toMatchObject({ ok: false })
     const badScheme = { ...VALID_SKIN, colorScheme: 'neon' }
     expect(parseSkin(JSON.stringify(badScheme))).toMatchObject({ ok: false })
+    const badGlow = {
+      ...VALID_SKIN,
+      spectrumStyle: { ...VALID_SKIN.spectrumStyle, glow: 'yes' },
+    }
+    expect(parseSkin(JSON.stringify(badGlow))).toMatchObject({ ok: false })
   })
 
   it('rejects spectrum gradient that is not a 2-tuple', () => {

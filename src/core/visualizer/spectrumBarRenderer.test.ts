@@ -45,14 +45,24 @@ interface FakeCtx {
   beginPath(): void
   roundRect(): void
   fill(): void
+  rect(): void
+  moveTo(x: number, y: number): void
+  lineTo(x: number, y: number): void
+  stroke(): void
   createLinearGradient(): FakeGradient
+  createRadialGradient(): FakeGradient
 }
 
 function makeFakeCtx(): { ctx: FakeCtx; calls: string[] } {
   const calls: string[] = []
-  const gradient: FakeGradient = {
+  const linearGradient: FakeGradient = {
     addColorStop: (offset: number, color: string): void => {
       calls.push(`addColorStop(${offset},${color})`)
+    },
+  }
+  const radialGradient: FakeGradient = {
+    addColorStop: (offset: number, color: string): void => {
+      calls.push(`radialStop(${offset},${color})`)
     },
   }
   const ctx: FakeCtx = {
@@ -72,9 +82,25 @@ function makeFakeCtx(): { ctx: FakeCtx; calls: string[] } {
     fill: (): void => {
       calls.push('fill')
     },
+    rect: (): void => {
+      calls.push('rect')
+    },
+    moveTo: (x: number, y: number): void => {
+      calls.push(`moveTo(${x},${y})`)
+    },
+    lineTo: (x: number, y: number): void => {
+      calls.push(`lineTo(${x},${y})`)
+    },
+    stroke: (): void => {
+      calls.push('stroke')
+    },
     createLinearGradient: (): FakeGradient => {
       calls.push('createLinearGradient')
-      return gradient
+      return linearGradient
+    },
+    createRadialGradient: (): FakeGradient => {
+      calls.push('createRadialGradient')
+      return radialGradient
     },
   }
   return { ctx, calls }
@@ -89,10 +115,25 @@ function makeFakeCanvas(ctx: FakeCtx) {
   }
 }
 
-function makeFrame(barValues: number[]): SpectrumFrame {
+function makeFrame(
+  barValues: number[],
+  options: {
+    waveform?: Uint8Array
+    low?: number
+    mid?: number
+    high?: number
+  } = {},
+): SpectrumFrame {
   const bars = new Float32Array(barValues)
   const raw = new Uint8Array(1024)
-  return { bars, raw, lowEnergy: 0, midEnergy: 0, highEnergy: 0 }
+  return {
+    bars,
+    raw,
+    waveform: options.waveform ?? new Uint8Array(64).fill(128),
+    lowEnergy: options.low ?? 0,
+    midEnergy: options.mid ?? 0,
+    highEnergy: options.high ?? 0,
+  }
 }
 
 describe('SpectrumBarRenderer', () => {
@@ -143,6 +184,45 @@ describe('SpectrumBarRenderer', () => {
     const renderer = new SpectrumBarRenderer({ barCount: 2 })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     expect(() => renderer.render(makeFrame([0.1, 0.2, 0.3, 0.4]), 0)).not.toThrow()
+  })
+
+  it('draws ambient glow (radial gradient) before the bars', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 4, mirror: true, rounded: true })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.5, 0.25, 0.75, 0], { low: 1 }), 0)
+    expect(calls).toContain('createRadialGradient')
+    expect(calls.filter((c) => c.startsWith('radialStop'))).toHaveLength(2)
+    // 光晕必须在柱体之前铺底
+    expect(calls.indexOf('createRadialGradient')).toBeLessThan(calls.indexOf('roundRect'))
+  })
+
+  it('draws the time-domain waveform line on top of the bars', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({
+      barCount: 2,
+      mirror: false,
+      rounded: false,
+      peakHold: false,
+    })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    const wave = new Uint8Array(64).fill(200) // 全正半轴采样
+    renderer.render(makeFrame([0.5, 0.25], { waveform: wave }), 0)
+    // 两次描边（宽辉光 + 细主线）
+    expect(calls.filter((c) => c === 'stroke')).toHaveLength(2)
+    // 首点：x=0，正采样 → y 在中心线(75)下方：75 + (72/128) × 52.5
+    expect(calls.find((c) => c.startsWith('moveTo'))).toBe('moveTo(0,104.53125)')
+    // 波形描边晚于柱体绘制（叠在最上层）
+    expect(calls.lastIndexOf('stroke')).toBeGreaterThan(calls.indexOf('fillRect'))
+  })
+
+  it('honors glow/waveform off switches', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 2, glow: false, waveform: false })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.5, 0.25]), 0)
+    expect(calls).not.toContain('createRadialGradient')
+    expect(calls).not.toContain('stroke')
   })
 
   it('setStyle resizes internal buffers', () => {

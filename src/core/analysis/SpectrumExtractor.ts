@@ -3,6 +3,7 @@ export interface AnalyserLike {
   readonly fftSize: number
   readonly frequencyBinCount: number
   getByteFrequencyData(array: Uint8Array): void
+  getByteTimeDomainData(array: Uint8Array): void
 }
 
 export interface SpectrumFrame {
@@ -10,6 +11,8 @@ export interface SpectrumFrame {
   readonly bars: Float32Array
   /** 原始频域数据（0..255），长度 = frequencyBinCount */
   readonly raw: Uint8Array
+  /** 时域波形采样（0..255，中点 128），长度 = fftSize */
+  readonly waveform: Uint8Array
   /** 低频能量 0..1（鼓/贝斯） */
   readonly lowEnergy: number
   /** 中频能量 0..1（人声/吉他） */
@@ -81,6 +84,7 @@ export class SpectrumExtractor {
   private readonly analyser: AnalyserLike
   private readonly options: SpectrumExtractorOptions
   private readonly raw: Uint8Array
+  private readonly timeDomain: Uint8Array
   private bars: Float32Array
   private buckets: ReadonlyArray<readonly [number, number]>
   private readonly binHz: number
@@ -90,6 +94,7 @@ export class SpectrumExtractor {
     this.analyser = analyser
     this.options = options
     this.raw = new Uint8Array(analyser.frequencyBinCount)
+    this.timeDomain = new Uint8Array(analyser.fftSize)
     this.bars = new Float32Array(options.barCount)
     this.binHz = options.sampleRate / analyser.fftSize
     this.bands = { ...DEFAULT_BANDS, ...options.bands }
@@ -121,6 +126,7 @@ export class SpectrumExtractor {
 
   nextFrame(): SpectrumFrame {
     this.analyser.getByteFrequencyData(this.raw)
+    this.analyser.getByteTimeDomainData(this.timeDomain)
     for (let b = 0; b < this.buckets.length; b++) {
       const bucket = this.buckets[b]
       const start = bucket?.[0] ?? 0
@@ -134,6 +140,13 @@ export class SpectrumExtractor {
     const lowEnergy = bandEnergy(this.raw, this.options.minFreq, this.bands.lowMax, this.binHz)
     const midEnergy = bandEnergy(this.raw, this.bands.lowMax, this.bands.midMax, this.binHz)
     const highEnergy = bandEnergy(this.raw, this.bands.midMax, this.bands.highMax, this.binHz)
-    return { bars: this.bars, raw: this.raw, lowEnergy, midEnergy, highEnergy }
+    return {
+      bars: this.bars,
+      raw: this.raw,
+      waveform: this.timeDomain,
+      lowEnergy,
+      midEnergy,
+      highEnergy,
+    }
   }
 }
