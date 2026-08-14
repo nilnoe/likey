@@ -10,6 +10,8 @@ export interface SpectrumStyle {
   readonly beatPulse: boolean
   /** 背景氛围光晕：色温随频段、透明度随能量 + 节拍呼吸 */
   readonly glow: boolean
+  /** 视觉形态：bars = 频谱柱，liquid = 无缝弧面液体剪影 */
+  readonly mode: 'bars' | 'liquid'
 }
 
 export const DEFAULT_SPECTRUM_STYLE: SpectrumStyle = {
@@ -22,6 +24,7 @@ export const DEFAULT_SPECTRUM_STYLE: SpectrumStyle = {
   fallSpeed: 0.9,
   beatPulse: true,
   glow: true,
+  mode: 'liquid',
 }
 
 /** 峰值线每帧下落量（0..1 刻度）。 */

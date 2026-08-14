@@ -46,6 +46,11 @@ interface FakeCtx {
   roundRect(x: number, y: number): void
   fill(): void
   rect(): void
+  arc(x: number, y: number, r: number): void
+  moveTo(x: number, y: number): void
+  lineTo(x: number, y: number): void
+  closePath(): void
+  stroke(): void
   createLinearGradient(): FakeGradient
   createRadialGradient(): FakeGradient
 }
@@ -81,6 +86,21 @@ function makeFakeCtx(): { ctx: FakeCtx; calls: string[] } {
     },
     rect: (): void => {
       calls.push('rect')
+    },
+    arc: (x: number, y: number, r: number): void => {
+      calls.push(`arc(${x.toFixed(1)},${y.toFixed(1)},${r.toFixed(1)})`)
+    },
+    moveTo: (x: number, y: number): void => {
+      calls.push(`moveTo(${x.toFixed(1)},${y.toFixed(1)})`)
+    },
+    lineTo: (x: number, y: number): void => {
+      calls.push(`lineTo(${x.toFixed(1)},${y.toFixed(1)})`)
+    },
+    closePath: (): void => {
+      calls.push('closePath')
+    },
+    stroke: (): void => {
+      calls.push('stroke')
     },
     createLinearGradient: (): FakeGradient => {
       calls.push('createLinearGradient')
@@ -121,7 +141,13 @@ function makeFrame(
 describe('SpectrumBarRenderer', () => {
   it('mounts and renders mirrored rounded bars + peak lines', () => {
     const { ctx, calls } = makeFakeCtx()
-    const renderer = new SpectrumBarRenderer({ barCount: 4, mirror: true, rounded: true, gap: 2 })
+    const renderer = new SpectrumBarRenderer({
+      barCount: 4,
+      mirror: true,
+      rounded: true,
+      gap: 2,
+      mode: 'bars',
+    })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.render(makeFrame([0.5, 0.25, 0.75, 0]), 0)
     renderer.render(makeFrame([0.4, 0.2, 0.7, 0]), 8) // beat 帧
@@ -134,7 +160,13 @@ describe('SpectrumBarRenderer', () => {
 
   it('mirrors bass toward the center (Q1/Q2 and Q3/Q4 swapped)', () => {
     const { ctx, calls } = makeFakeCtx()
-    const renderer = new SpectrumBarRenderer({ barCount: 4, mirror: true, rounded: true, gap: 0 })
+    const renderer = new SpectrumBarRenderer({
+      barCount: 4,
+      mirror: true,
+      rounded: true,
+      gap: 0,
+      mode: 'bars',
+    })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     // 低频柱（i=0）最高：平移互换后应贴近中线（slot = 300/8 = 37.5），而不是面板外缘
     renderer.render(makeFrame([0.9, 0.1, 0.1, 0.1]), 0)
@@ -152,7 +184,7 @@ describe('SpectrumBarRenderer', () => {
 
   it('mirror uses a mirror-fading gradient for the bottom half', () => {
     const { ctx, calls } = makeFakeCtx()
-    const renderer = new SpectrumBarRenderer({ barCount: 2, mirror: true })
+    const renderer = new SpectrumBarRenderer({ barCount: 2, mirror: true, mode: 'bars' })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.render(makeFrame([0.5, 0.25]), 0)
     // 主渐变两 stop 原色；倒影渐变：中心线 50% 混合色 @45% → 底部回到底色 @6%
@@ -171,6 +203,7 @@ describe('SpectrumBarRenderer', () => {
       mirror: false,
       rounded: false,
       peakHold: false,
+      mode: 'bars',
     })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.render(makeFrame([1, 0.5]), 0)
@@ -181,14 +214,19 @@ describe('SpectrumBarRenderer', () => {
 
   it('adapts to frame bar count changes', () => {
     const { ctx } = makeFakeCtx()
-    const renderer = new SpectrumBarRenderer({ barCount: 2 })
+    const renderer = new SpectrumBarRenderer({ barCount: 2, mode: 'bars' })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     expect(() => renderer.render(makeFrame([0.1, 0.2, 0.3, 0.4]), 0)).not.toThrow()
   })
 
   it('draws ambient glow (radial gradient) before the bars', () => {
     const { ctx, calls } = makeFakeCtx()
-    const renderer = new SpectrumBarRenderer({ barCount: 4, mirror: true, rounded: true })
+    const renderer = new SpectrumBarRenderer({
+      barCount: 4,
+      mirror: true,
+      rounded: true,
+      mode: 'bars',
+    })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.render(makeFrame([0.5, 0.25, 0.75, 0], { low: 1 }), 0)
     expect(calls).toContain('createRadialGradient')
@@ -201,7 +239,7 @@ describe('SpectrumBarRenderer', () => {
 
   it('honors glow off switch', () => {
     const { ctx, calls } = makeFakeCtx()
-    const renderer = new SpectrumBarRenderer({ barCount: 2, glow: false })
+    const renderer = new SpectrumBarRenderer({ barCount: 2, glow: false, mode: 'bars' })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.render(makeFrame([0.5, 0.25]), 0)
     expect(calls).not.toContain('createRadialGradient')
@@ -209,10 +247,54 @@ describe('SpectrumBarRenderer', () => {
 
   it('setStyle resizes internal buffers', () => {
     const { ctx, calls } = makeFakeCtx()
-    const renderer = new SpectrumBarRenderer({ barCount: 2, mirror: false, rounded: false })
+    const renderer = new SpectrumBarRenderer({
+      barCount: 2,
+      mirror: false,
+      rounded: false,
+      mode: 'bars',
+    })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.setStyle({ barCount: 6 })
     renderer.render(makeFrame([0.1, 0.2, 0.3, 0.4, 0.5, 0.6]), 0)
     expect(calls.filter((c) => c === 'fillRect').length).toBeGreaterThanOrEqual(6)
+  })
+
+  it('liquid mode draws seamless arc silhouettes with surface rims', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 2, mirror: true, mode: 'liquid' })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.5, 0.25]), 0)
+    // 液体模式不用柱子/峰值线，改用连续弧面路径
+    expect(calls).not.toContain('roundRect')
+    expect(calls).not.toContain('fillRect')
+    // 顶面 + 底面各一条剪影；每条弧链画两遍（填充 + 高光描边）→ 2×2×2×2 = 16 弧
+    expect(calls.filter((c) => c === 'closePath')).toHaveLength(2)
+    expect(calls.filter((c) => c.startsWith('arc'))).toHaveLength(16)
+    expect(calls.filter((c) => c === 'stroke')).toHaveLength(2)
+    expect(calls.filter((c) => c === 'fill')).toHaveLength(3)
+  })
+
+  it('liquid bass humps meet at the center with rounded arc tops', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 2, mirror: true, mode: 'liquid' })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.9, 0.1]), 0)
+    // slot = 300/4 = 75, r = 37.5；弧链顺序：顶面填充(4) → 顶面高光(4) → 底面填充(4) → 底面高光(4)
+    const arcs = calls.filter((c) => c.startsWith('arc'))
+    expect(arcs[1]).toBe('arc(112.5,45.0,37.5)') // 顶面左半低频：圆心贴近中心线
+    expect(arcs[2]).toBe('arc(187.5,45.0,37.5)') // 顶面右半低频：与左半在中心相会
+    expect(arcs[3]).toBe('arc(262.5,105.0,37.5)') // 高频弧落回右外缘（圆心更低=更矮）
+    expect(arcs[9]).toBe('arc(112.5,105.0,37.5)') // 底面低频弧（朝下鼓）
+  })
+
+  it('liquid mode works in non-mirror layout', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 2, mirror: false, mode: 'liquid' })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([1, 0.5]), 0)
+    // 单排剪影：2 弧 × 2 遍（填充 + 高光）、1 条闭合路径、1 条高光描边
+    expect(calls.filter((c) => c.startsWith('arc'))).toHaveLength(4)
+    expect(calls.filter((c) => c === 'closePath')).toHaveLength(1)
+    expect(calls.filter((c) => c === 'stroke')).toHaveLength(1)
   })
 })

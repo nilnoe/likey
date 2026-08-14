@@ -8,6 +8,7 @@ import { PlaylistPanel } from './features/player/PlaylistPanel'
 import { filterAudioFiles } from './features/player/audioFiles'
 import { usePlayerEngine } from './features/player/usePlayerEngine'
 import { SkinSwitcher } from './features/skins/SkinSwitcher'
+import { VisualizerModeSwitch } from './features/visualizer/VisualizerModeSwitch'
 import { VisualizerCanvas } from './features/visualizer/VisualizerCanvas'
 import { useDownloadsStore } from './state/downloadsStore'
 import { useOnlineSourceStore } from './state/onlineSourceStore'
@@ -124,6 +125,7 @@ export default function App() {
         <h1>Likey</h1>
         <span className="app-subtitle">千千静听风律动播放器 · S5 皮肤系统</span>
         <div className="app-header-right">
+          <VisualizerModeSwitch />
           <SkinSwitcher />
         </div>
       </header>

@@ -16,6 +16,10 @@ const PEAK_COLOR = 'rgba(255, 255, 255, 0.75)'
 const FADE_ALPHA = 0.45
 const FADE_BOTTOM_ALPHA = 0.06
 const FADED_PEAK_COLOR = 'rgba(255, 255, 255, 0.35)'
+/** 液体模式表面高光：顶面亮、倒影面更淡。 */
+const SURFACE_RIM_TOP = 'rgba(255, 255, 255, 0.4)'
+const SURFACE_RIM_BOTTOM = 'rgba(255, 255, 255, 0.22)'
+const SURFACE_LINE_WIDTH = 1.5
 
 /**
  * 千千静听风频谱柱渲染器（Canvas 2D）。
@@ -109,7 +113,17 @@ export class SpectrumBarRenderer {
     if (this.style.glow) {
       this.drawGlow(width, height)
     }
+    if (this.style.mode === 'liquid') {
+      this.drawLiquid(width, height)
+    } else {
+      this.drawBars(width, height)
+    }
+  }
 
+  /** 频谱柱模式：四象限低频居中 + 完全倒影 + 峰值线。 */
+  private drawBars(width: number, height: number): void {
+    const ctx = this.ctx
+    if (ctx === null) return
     const mirror = this.style.mirror
     const count = this.values.length
     const total = mirror ? count * 2 : count
@@ -123,7 +137,7 @@ export class SpectrumBarRenderer {
 
     for (let i = 0; i < count; i++) {
       const value = this.values[i] ?? 0
-      const barHeight = Math.max(0.5, value * halfHeight * pulseScale)
+      const barHeight = this.barHeightOf(value, halfHeight, pulseScale)
       if (mirror) {
         // 四象限低频居中 + 完全倒影：上半（Q1/Q2）主渐变，
         // 下半（Q3/Q4）同色倒影，自中心线向下渐隐（无硬切割）
@@ -165,6 +179,105 @@ export class SpectrumBarRenderer {
         }
       }
     }
+  }
+
+  /** 液体模式：整条无缝弧面剪影（顶面 + 倒影面），表面一圈高光边。 */
+  private drawLiquid(width: number, height: number): void {
+    const mirror = this.style.mirror
+    const count = this.values.length
+    const slot = width / (mirror ? count * 2 : count)
+    const pulseScale = 1 + 0.05 * this.pulse
+    const halfHeight = mirror ? height / 2 : height
+    const baseY = mirror ? height / 2 : height
+    const primary = this.ensureGradient(height)
+    const faded = mirror ? this.ensureFadedGradient(height) : primary
+    this.drawLiquidHalf(
+      width,
+      slot,
+      count,
+      baseY,
+      halfHeight,
+      pulseScale,
+      1,
+      primary,
+      SURFACE_RIM_TOP,
+    )
+    if (mirror) {
+      this.drawLiquidHalf(
+        width,
+        slot,
+        count,
+        height / 2,
+        halfHeight,
+        pulseScale,
+        -1,
+        faded,
+        SURFACE_RIM_BOTTOM,
+      )
+    }
+  }
+
+  /**
+   * 绘制一侧液体剪影：左缘 → 弧链（镜像时左半 i=count-1→0、右半 i=0→count-1）→ 右缘 → 沿轴闭合填充，
+   * 再单独描一遍弧链表面做高光。direction=1 柱顶朝上，-1 柱顶朝下（倒影）。
+   */
+  private drawLiquidHalf(
+    width: number,
+    slot: number,
+    count: number,
+    baseY: number,
+    halfHeight: number,
+    pulseScale: number,
+    direction: 1 | -1,
+    fillStyle: string | CanvasGradient,
+    rimColor: string,
+  ): void {
+    const ctx = this.ctx
+    if (ctx === null) return
+    const r = slot / 2
+    const apexOf = (i: number): number => {
+      const h = this.barHeightOf(this.values[i] ?? 0, halfHeight, pulseScale)
+      return baseY - direction * h
+    }
+    const arcAt = (x: number, i: number): void => {
+      const apex = apexOf(i)
+      if (direction === 1) {
+        ctx.arc(x + r, apex + r, r, Math.PI, Math.PI * 2)
+      } else {
+        ctx.arc(x + r, apex - r, r, Math.PI, 0, true)
+      }
+    }
+    const trace = (start: 'move' | 'line'): void => {
+      const firstI = this.style.mirror ? count - 1 : 0
+      const firstY = direction === 1 ? apexOf(firstI) + r : apexOf(firstI) - r
+      if (start === 'move') ctx.moveTo(0, firstY)
+      else ctx.lineTo(0, firstY)
+      if (this.style.mirror) {
+        for (let i = count - 1; i >= 0; i--) arcAt(slot * (count - 1 - i), i)
+        for (let i = 0; i < count; i++) arcAt(slot * (count + i), i)
+      } else {
+        for (let i = 0; i < count; i++) arcAt(slot * i, i)
+      }
+    }
+
+    ctx.beginPath()
+    ctx.moveTo(0, baseY)
+    trace('line')
+    ctx.lineTo(width, baseY)
+    ctx.closePath()
+    ctx.fillStyle = fillStyle
+    ctx.fill()
+
+    ctx.beginPath()
+    trace('move')
+    ctx.strokeStyle = rimColor
+    ctx.lineWidth = SURFACE_LINE_WIDTH
+    ctx.stroke()
+  }
+
+  /** 单根柱/单段液面的高度（平滑后 × 脉冲，下限 0.5px）。 */
+  private barHeightOf(value: number, halfHeight: number, pulseScale: number): number {
+    return Math.max(0.5, value * halfHeight * pulseScale)
   }
 
   /** 背景氛围光晕：中心径向渐变，色温/透明度由 computeGlow 逐帧驱动。 */

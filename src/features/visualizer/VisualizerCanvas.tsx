@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { SpectrumBarRenderer } from '../../core/visualizer/SpectrumBarRenderer'
 import { useSkinStore } from '../../state/skinStore'
+import { useVisualizerModeStore } from '../../state/visualizerModeStore'
 import type { PlayerEngine } from '../player/usePlayerEngine'
 
 /**
@@ -14,6 +15,7 @@ export function VisualizerCanvas({ engine }: { engine: PlayerEngine }) {
   const spectrumStyle = useSkinStore(
     (s) => s.skins.find((skin) => skin.id === s.activeId)?.spectrumStyle,
   )
+  const mode = useVisualizerModeStore((s) => s.mode)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -47,12 +49,12 @@ export function VisualizerCanvas({ engine }: { engine: PlayerEngine }) {
     }
   }, [engine])
 
-  // 皮肤切换 → 柱数同步提取器，样式参数注入渲染器
+  // 皮肤/形态切换 → 柱数同步提取器，样式参数注入渲染器
   useEffect(() => {
     if (spectrumStyle === undefined) return
     engine.extractor.setBarCount(spectrumStyle.barCount)
-    rendererRef.current?.setStyle(spectrumStyle)
-  }, [spectrumStyle, engine])
+    rendererRef.current?.setStyle({ ...spectrumStyle, mode })
+  }, [spectrumStyle, mode, engine])
 
   return <canvas ref={canvasRef} className="visualizer-canvas" />
 }
