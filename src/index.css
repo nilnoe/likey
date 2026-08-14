@@ -6,6 +6,10 @@
   --text: #e6edf3;
   --muted: #8b98a5;
   --accent: #22d3ee;
+  --lyric-active: #ffffff;
+  --lyric-progress: #22d3ee;
+  --lyric-inactive: #8b98a5;
+  --lyric-font-size: 16px;
 }
 
 * {

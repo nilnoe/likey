@@ -8,8 +8,36 @@
 
 .app-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
+}
+
+.app-header-right {
+  margin-left: auto;
+}
+
+.skin-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.skin-switcher select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.skin-error {
+  color: #f87171;
+  font-size: 11px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-header h1 {
@@ -414,14 +442,14 @@
 .lyric-row {
   padding: 6px 8px;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--lyric-inactive);
   transition:
     color 0.2s ease,
     transform 0.2s ease;
 }
 
 .lyric-row.active {
-  color: var(--text);
+  color: var(--lyric-active);
   transform: scale(1.04);
   transform-origin: left center;
 }
@@ -430,6 +458,7 @@
   position: relative;
   display: inline-block;
   white-space: nowrap;
+  font-size: var(--lyric-font-size);
 }
 
 .lyric-text {
@@ -440,14 +469,14 @@
   position: absolute;
   left: 0;
   top: 0;
-  color: var(--accent);
+  color: var(--lyric-progress);
   overflow: hidden;
   width: 0;
 }
 
 .lyric-translation {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--lyric-inactive);
   opacity: 0.85;
 }
 

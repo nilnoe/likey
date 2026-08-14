@@ -112,4 +112,23 @@ describe('SpectrumExtractor', () => {
     }
     expect(frame.lowEnergy).toBe(1)
   })
+
+  it('setBarCount rebuilds bars and buckets', () => {
+    const raw = new Uint8Array(BIN_COUNT)
+    const extractor = new SpectrumExtractor(makeFakeAnalyser(raw), {
+      sampleRate: SAMPLE_RATE,
+      minFreq: 20,
+      maxFreq: 20000,
+      barCount: 4,
+    })
+    expect(extractor.barCount).toBe(4)
+    extractor.setBarCount(64)
+    expect(extractor.barCount).toBe(64)
+    const frame = extractor.nextFrame()
+    expect(frame.bars).toHaveLength(64)
+    extractor.setBarCount(64) // 同值不重建
+    expect(extractor.barCount).toBe(64)
+    extractor.setBarCount(0) // 非法值忽略
+    expect(extractor.barCount).toBe(64)
+  })
 })

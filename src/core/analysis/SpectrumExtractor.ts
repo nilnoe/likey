@@ -81,8 +81,8 @@ export class SpectrumExtractor {
   private readonly analyser: AnalyserLike
   private readonly options: SpectrumExtractorOptions
   private readonly raw: Uint8Array
-  private readonly bars: Float32Array
-  private readonly buckets: ReadonlyArray<readonly [number, number]>
+  private bars: Float32Array
+  private buckets: ReadonlyArray<readonly [number, number]>
   private readonly binHz: number
   private readonly bands: SpectrumBands
 
@@ -104,6 +104,19 @@ export class SpectrumExtractor {
 
   get barCount(): number {
     return this.bars.length
+  }
+
+  /** 动态调整柱数（皮肤切换时同步）。 */
+  setBarCount(barCount: number): void {
+    if (barCount === this.bars.length || barCount < 1) return
+    this.bars = new Float32Array(barCount)
+    this.buckets = buildLogBuckets(
+      this.options.minFreq,
+      this.options.maxFreq,
+      barCount,
+      this.binHz,
+      this.analyser.frequencyBinCount,
+    )
   }
 
   nextFrame(): SpectrumFrame {

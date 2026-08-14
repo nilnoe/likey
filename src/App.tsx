@@ -6,8 +6,10 @@ import { FormatProbePanel } from './features/player/FormatProbePanel'
 import { PlaylistPanel } from './features/player/PlaylistPanel'
 import { filterAudioFiles } from './features/player/audioFiles'
 import { usePlayerEngine } from './features/player/usePlayerEngine'
+import { SkinSwitcher } from './features/skins/SkinSwitcher'
 import { VisualizerCanvas } from './features/visualizer/VisualizerCanvas'
 import { useQueueStore } from './state/queueStore'
+import { useSkinStore } from './state/skinStore'
 
 function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
@@ -27,6 +29,27 @@ export default function App() {
   const prev = useQueueStore((s) => s.prev)
   const setRepeat = useQueueStore((s) => s.setRepeat)
   const toggleShuffle = useQueueStore((s) => s.toggleShuffle)
+
+  const skins = useSkinStore((s) => s.skins)
+  const activeSkinId = useSkinStore((s) => s.activeId)
+  const activeSkin = skins.find((skin) => skin.id === activeSkinId)
+
+  // 皮肤 → CSS 变量（全应用即时生效）
+  useEffect(() => {
+    if (activeSkin === undefined) return
+    const root = document.documentElement.style
+    root.setProperty('--bg', activeSkin.colors.appBg)
+    root.setProperty('--panel', activeSkin.colors.panelBg)
+    root.setProperty('--panel-border', activeSkin.colors.panelBorder)
+    root.setProperty('--text', activeSkin.colors.textPrimary)
+    root.setProperty('--muted', activeSkin.colors.textSecondary)
+    root.setProperty('--accent', activeSkin.colors.accent)
+    root.setProperty('--lyric-active', activeSkin.colors.lyricActive)
+    root.setProperty('--lyric-progress', activeSkin.colors.lyricProgress)
+    root.setProperty('--lyric-inactive', activeSkin.colors.lyricInactive)
+    root.setProperty('--lyric-font-size', `${activeSkin.lyrics.fontSize}px`)
+    root.setProperty('color-scheme', activeSkin.colorScheme)
+  }, [activeSkin])
 
   const duration = engine.player.getDuration()
   const canToggle = status.kind === 'playing' || status.kind === 'ready'
@@ -90,7 +113,10 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>Likey</h1>
-        <span className="app-subtitle">千千静听风律动播放器 · S1 播放内核</span>
+        <span className="app-subtitle">千千静听风律动播放器 · S5 皮肤系统</span>
+        <div className="app-header-right">
+          <SkinSwitcher />
+        </div>
       </header>
       <main className="app-main">
         <section className="visualizer-panel">
