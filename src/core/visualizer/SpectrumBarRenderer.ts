@@ -213,7 +213,8 @@ export class SpectrumBarRenderer {
     ctx.fillStyle = primary
     for (let i = 0; i < count; i++) {
       const value = this.values[i] ?? 0
-      const w = Math.max(0.5, value * width * pulseScale)
+      // 与垂直模式一致：宽度同样乘幅度系数，满能量也不顶到右边缘
+      const w = Math.max(0.5, value * width * AMPLITUDE_SCALE * pulseScale)
       const y = height - (i + 1) * stripHeight + gap / 2
       ctx.fillRect(0, y, w, h)
     }

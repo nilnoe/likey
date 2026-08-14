@@ -359,9 +359,10 @@ describe('SpectrumBarRenderer', () => {
     // 4 条横向带（无峰值线/无镜像放大），自左向右伸缩
     expect(rects).toHaveLength(4)
     // stripHeight = 150/4 = 37.5, gap = 1.5, h = 36；低频 i=0 在最底部
-    expect(rects[0]).toBe('fillRect(0.00,113.25,150.00,36.00)') // 低频带：宽 0.5×300
-    expect(rects[1]).toBe('fillRect(0.00,75.75,75.00,36.00)') // 中频带
-    expect(rects[2]).toBe('fillRect(0.00,38.25,225.00,36.00)') // 高频带：宽 0.75×300
+    // 宽度同样乘 AMPLITUDE_SCALE=0.9：满能量也不顶到右边缘
+    expect(rects[0]).toBe('fillRect(0.00,113.25,135.00,36.00)') // 低频带：宽 0.5×300×0.9
+    expect(rects[1]).toBe('fillRect(0.00,75.75,67.50,36.00)') // 中频带
+    expect(rects[2]).toBe('fillRect(0.00,38.25,202.50,36.00)') // 高频带：宽 0.75×300×0.9
     expect(rects[3]).toBe('fillRect(0.00,0.75,0.50,36.00)') // 顶部静音带保底 0.5px
     expect(calls).not.toContain('roundRect')
     expect(calls).not.toContain('closePath')
