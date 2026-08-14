@@ -23,7 +23,14 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/**", "$MUSIC/**", "$DOWNLOAD/**", "$DOCUMENT/**", "$DESKTOP/**"]
+        "scope": [
+          "$HOME/**",
+          "$MUSIC/**",
+          "$DOWNLOAD/**",
+          "$DOCUMENT/**",
+          "$DESKTOP/**",
+          "$APPDATA/**"
+        ]
       }
     }
   },

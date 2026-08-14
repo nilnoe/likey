@@ -62,6 +62,8 @@ pub fn run() {
             commands::metadata::read_metadata,
             commands::metadata::read_cover,
             commands::scan::scan_directory,
+            commands::download::download_file,
+            commands::download::delete_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

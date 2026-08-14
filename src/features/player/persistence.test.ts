@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PlaylistTrack } from '../../core/player/Queue'
 import {
+  loadDownloads,
   loadLibraryDir,
   loadLyricsOffset,
   loadQueue,
+  saveDownloads,
   saveLibraryDir,
   saveLyricsOffset,
   saveQueue,
@@ -73,5 +75,24 @@ describe('音乐库目录持久化', () => {
     expect(await loadLibraryDir()).toBe('/Users/x/Music')
     await saveLibraryDir(null)
     expect(await loadLibraryDir()).toBeNull()
+  })
+})
+
+describe('下载列表持久化', () => {
+  it('round-trips downloaded items', async () => {
+    await saveDownloads([
+      { id: 'audius:vZJJz', name: 'workit - chromonicci.', path: '/x/y.mp3', downloadedAt: 42 },
+    ])
+    const restored = await loadDownloads()
+    expect(restored).toEqual([
+      { id: 'audius:vZJJz', name: 'workit - chromonicci.', path: '/x/y.mp3', downloadedAt: 42 },
+    ])
+    expect(await loadDownloads()).toHaveLength(1)
+    await saveDownloads([])
+    expect(await loadDownloads()).toEqual([])
+  })
+
+  it('returns empty list when nothing persisted', async () => {
+    expect(await loadDownloads()).toEqual([])
   })
 })

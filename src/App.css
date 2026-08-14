@@ -609,3 +609,14 @@
   font-size: 13px;
   margin: 0;
 }
+
+.downloads-section {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 8px;
+}
+
+.downloads-section h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}

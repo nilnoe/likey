@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import {
   MUSIC_QUALITIES,
   type MusicQuality,
   type SourceSong,
 } from '../../core/onlinesource/protocol'
+import { deleteDownload, downloadFile } from '../library/tauriBridge'
+import { useDownloadsStore } from '../../state/downloadsStore'
 import { useLibraryStore } from '../../state/libraryStore'
 import { useLyricOverrideStore } from '../../state/lyricOverrideStore'
 import { useOnlineSourceStore } from '../../state/onlineSourceStore'
@@ -15,6 +18,12 @@ function formatDuration(seconds: number): string {
   const minutes = Math.floor(total / 60)
   const rest = total % 60
   return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return ''
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }
 
 const STATUS_LABEL: Record<SourceRuntimeStatus, string> = {
@@ -38,11 +47,18 @@ export function OnlineSourcePanel() {
   const libraryTracks = useLibraryStore((s) => s.tracks)
   const setLyricOverride = useLyricOverrideStore((s) => s.set)
   const lyricOverride = useLyricOverrideStore((s) => s.text)
+  const downloads = useDownloadsStore((s) => s.items)
+  const addDownload = useDownloadsStore((s) => s.add)
+  const removeDownload = useDownloadsStore((s) => s.remove)
 
   const runtimeRef = useRef<SourceRuntime | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<SourceRuntimeStatus>('idle')
   const [statusError, setStatusError] = useState<string | null>(null)
+  const [downloadingSong, setDownloadingSong] = useState<string | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  )
   const [keyword, setKeyword] = useState('')
   const [quality, setQuality] = useState<MusicQuality>('128k')
   const [results, setResults] = useState<readonly SourceSong[]>([])
@@ -180,6 +196,58 @@ export function OnlineSourcePanel() {
     setHint(error ?? `已导入音源「${name}」`)
   }
 
+  /** 下载音源曲目到本地（Rust 流式 + 进度），入库下载列表。 */
+  async function handleDownload(song: SourceSong): Promise<void> {
+    const runtime = runtimeRef.current
+    if (runtime === null || downloadingSong !== null) return
+    setHint(null)
+    setDownloadingSong(song.songmid)
+    setDownloadProgress(null)
+    try {
+      const url = await runtime.getMusicUrl(song.songmid, quality)
+      if (url === null) {
+        setHint('音源未返回可下载地址')
+        return
+      }
+      const path = await downloadFile(url, `${activeId}-${song.songmid}`, (done, total) =>
+        setDownloadProgress({ done, total }),
+      )
+      addDownload({
+        id: `${activeId}:${song.songmid}`,
+        name: `${song.name} - ${song.singer}`,
+        path,
+        downloadedAt: Date.now(),
+      })
+      setHint(`已下载：${song.name}`)
+    } catch (error) {
+      setHint(error instanceof Error ? error.message : String(error))
+    } finally {
+      setDownloadingSong(null)
+      setDownloadProgress(null)
+    }
+  }
+
+  /** 删除下载（同时移除磁盘文件与列表条目）。 */
+  async function handleRemoveDownload(id: string): Promise<void> {
+    const target = removeDownload(id)
+    if (target !== undefined) {
+      try {
+        await deleteDownload(target.path)
+      } catch (error) {
+        setHint(error instanceof Error ? error.message : String(error))
+      }
+    }
+  }
+
+  /** 播放已下载曲目（资产协议取本地字节，离线可用）。 */
+  function handlePlayDownload(id: string, name: string, path: string): void {
+    void playTrack({
+      id: `download-${id}`,
+      name,
+      source: { kind: 'url', url: convertFileSrc(path) },
+    })
+  }
+
   const activeSource = sources.find((s) => s.id === activeId)
 
   return (
@@ -238,6 +306,14 @@ export function OnlineSourcePanel() {
         </button>
       </div>
       {hint !== null && <div className="online-hint">{hint}</div>}
+      {downloadingSong !== null && (
+        <div className="online-hint">
+          下载中…
+          {downloadProgress !== null && downloadProgress.total > 0
+            ? ` ${formatBytes(downloadProgress.done)} / ${formatBytes(downloadProgress.total)}`
+            : ` ${formatBytes(downloadProgress?.done ?? 0)}`}
+        </div>
+      )}
       {lyricOverride !== null && (
         <div className="online-hint">
           已注入音源歌词
@@ -259,9 +335,16 @@ export function OnlineSourcePanel() {
               <button
                 type="button"
                 onClick={() => void handlePlay(song)}
-                disabled={busySong === song.songmid}
+                disabled={busySong === song.songmid || downloadingSong !== null}
               >
                 {busySong === song.songmid ? '获取中…' : '▶ 播放'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDownload(song)}
+                disabled={downloadingSong !== null}
+              >
+                {downloadingSong === song.songmid ? '下载中…' : '⬇ 下载'}
               </button>
               <button type="button" onClick={() => void handleLyric(song)}>
                 歌词
@@ -273,6 +356,30 @@ export function OnlineSourcePanel() {
         <p className="online-empty">
           输入关键词搜索（内置示例源可搜索本地音乐库；导入 lx-music 兼容音源可搜索在线曲库）
         </p>
+      )}
+      {downloads.length > 0 && (
+        <div className="downloads-section">
+          <h3>已下载（{downloads.length}，离线可播）</h3>
+          <ul className="online-results">
+            {downloads.map((item) => (
+              <li key={item.id} className="online-row">
+                <span className="online-name">{item.name}</span>
+                <span className="online-singer">
+                  {new Date(item.downloadedAt).toLocaleDateString()}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handlePlayDownload(item.id, item.name, item.path)}
+                >
+                  ▶ 播放
+                </button>
+                <button type="button" onClick={() => void handleRemoveDownload(item.id)}>
+                  删除
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <input
         ref={fileInputRef}

@@ -33,3 +33,29 @@ export async function readCoverBytes(path: string): Promise<Uint8Array<ArrayBuff
   view.set(bytes)
   return view
 }
+
+export interface DownloadProgressMsg {
+  readonly downloaded: number
+  readonly total: number
+}
+
+/**
+ * 下载音源曲目到应用数据目录（Rust reqwest 流式 + 进度 Channel），返回绝对路径。
+ * 文件已存在时直接返回既有路径（跳过重复下载）。
+ */
+export async function downloadFile(
+  url: string,
+  fileName: string,
+  onProgress: (downloaded: number, total: number) => void,
+): Promise<string> {
+  const progress = new Channel<DownloadProgressMsg>()
+  progress.onmessage = (msg) => {
+    onProgress(msg.downloaded, msg.total)
+  }
+  return invoke<string>('download_file', { url, fileName, onProgress: progress })
+}
+
+/** 删除下载文件（Rust 侧校验路径必须位于下载目录内）。 */
+export async function deleteDownload(path: string): Promise<void> {
+  await invoke('delete_download', { path })
+}

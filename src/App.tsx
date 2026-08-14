@@ -9,6 +9,7 @@ import { filterAudioFiles } from './features/player/audioFiles'
 import { usePlayerEngine } from './features/player/usePlayerEngine'
 import { SkinSwitcher } from './features/skins/SkinSwitcher'
 import { VisualizerCanvas } from './features/visualizer/VisualizerCanvas'
+import { useDownloadsStore } from './state/downloadsStore'
 import { useOnlineSourceStore } from './state/onlineSourceStore'
 import { useQueueStore } from './state/queueStore'
 import { useSkinStore } from './state/skinStore'
@@ -53,9 +54,10 @@ export default function App() {
     root.setProperty('color-scheme', activeSkin.colorScheme)
   }, [activeSkin])
 
-  // 启动时恢复用户音源脚本
+  // 启动时恢复用户音源脚本与下载列表
   useEffect(() => {
     void useOnlineSourceStore.getState().restore()
+    void useDownloadsStore.getState().restore()
   }, [])
 
   const duration = engine.player.getDuration()

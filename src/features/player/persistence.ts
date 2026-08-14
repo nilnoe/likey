@@ -126,3 +126,24 @@ export async function loadOnlineSources(): Promise<readonly PersistedSource[]> {
   if (store === null) return []
   return (await store.get<readonly PersistedSource[]>('onlineSources')) ?? []
 }
+
+/** 已下载曲目（id/name/path/时间戳）。 */
+export interface PersistedDownload {
+  readonly id: string
+  readonly name: string
+  readonly path: string
+  readonly downloadedAt: number
+}
+
+export async function saveDownloads(items: readonly PersistedDownload[]): Promise<void> {
+  const store = await getStore()
+  if (store === null) return
+  await store.set('downloads', items)
+  await store.save()
+}
+
+export async function loadDownloads(): Promise<readonly PersistedDownload[]> {
+  const store = await getStore()
+  if (store === null) return []
+  return (await store.get<readonly PersistedDownload[]>('downloads')) ?? []
+}

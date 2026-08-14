@@ -24,3 +24,11 @@ pub struct ScanProgress {
     pub done: u32,
     pub total: u32,
 }
+
+/// 下载进度事件载荷（total 为 0 表示未知）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    pub downloaded: u64,
+    pub total: u64,
+}
