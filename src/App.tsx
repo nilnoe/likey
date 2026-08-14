@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { LibraryPanel } from './features/library/LibraryPanel'
+import { LyricsPanel } from './features/lyrics/LyricsPanel'
 import { FormatProbePanel } from './features/player/FormatProbePanel'
 import { PlaylistPanel } from './features/player/PlaylistPanel'
 import { filterAudioFiles } from './features/player/audioFiles'
@@ -156,6 +157,7 @@ export default function App() {
           <div className="status-line">{statusText}</div>
         </section>
         <div className="bottom-panels">
+          <LyricsPanel engine={engine} />
           <LibraryPanel />
           <PlaylistPanel playing={status.kind === 'playing'} />
           <FormatProbePanel backend={engine.backend} />
