@@ -17,7 +17,7 @@ pub fn is_audio_file(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_audio_file;
+    use super::{is_audio_file, split_artist_title};
     use std::path::Path;
 
     #[test]
@@ -29,13 +29,38 @@ mod tests {
             assert!(!is_audio_file(Path::new(&format!("file.{ext}"))));
         }
     }
+
+    #[test]
+    fn splits_artist_title_filenames() {
+        assert_eq!(
+            split_artist_title("周杰伦 - 晴天"),
+            ("周杰伦".to_string(), "晴天".to_string())
+        );
+        assert_eq!(
+            split_artist_title(" 周杰伦 - 晴天 "),
+            ("周杰伦".to_string(), "晴天".to_string())
+        );
+        assert_eq!(
+            split_artist_title("晴天"),
+            ("未知艺术家".to_string(), "晴天".to_string())
+        );
+        assert_eq!(
+            split_artist_title(" - "),
+            ("未知艺术家".to_string(), "-".to_string())
+        );
+    }
 }
 
-fn fallback_title(path: &Path) -> String {
-    path.file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("未知曲目")
-        .to_string()
+/// 文件名解析兜底：「作者 - 歌名」拆分为 (作者, 歌名)；无分隔返回 (未知艺术家, 原名)。
+pub fn split_artist_title(stem: &str) -> (String, String) {
+    if let Some((artist, title)) = stem.split_once(" - ") {
+        let artist = artist.trim();
+        let title = title.trim();
+        if !artist.is_empty() && !title.is_empty() {
+            return (artist.to_string(), title.to_string());
+        }
+    }
+    ("未知艺术家".to_string(), stem.trim().to_string())
 }
 
 pub fn read_metadata_impl(path: &Path) -> Result<TrackMeta, String> {
@@ -48,13 +73,20 @@ pub fn read_metadata_impl(path: &Path) -> Result<TrackMeta, String> {
         .primary_tag()
         .or_else(|| tagged_file.first_tag());
 
+    // 标签优先；无标签时按「作者 - 歌名」文件名解析（兜底，不写死规则）
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("未知曲目");
+    let (fallback_artist, fallback_title) = split_artist_title(stem);
     let title = tag
         .and_then(|t| t.title().map(|s| s.into_owned()))
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| fallback_title(path));
+        .unwrap_or(fallback_title);
     let artist = tag
         .and_then(|t| t.artist().map(|s| s.into_owned()))
-        .unwrap_or_else(|| "未知艺术家".to_string());
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(fallback_artist);
     let album = tag
         .and_then(|t| t.album().map(|s| s.into_owned()))
         .unwrap_or_default();

@@ -40,19 +40,28 @@ export interface DownloadProgressMsg {
 }
 
 /**
- * 下载音源曲目到应用数据目录（Rust reqwest 流式 + 进度 Channel），返回绝对路径。
- * 文件已存在时直接返回既有路径（跳过重复下载）。
+ * 下载音源曲目到 ~/Music/Mymusic（Rust reqwest 流式 + 进度 Channel），返回绝对路径。
+ * 文件已存在时直接返回既有路径（跳过重复下载）；
+ * 提供 metadata 时下载完成后写入文件标签（title/artist/album，机器可识别）。
  */
 export async function downloadFile(
   url: string,
   fileName: string,
   onProgress: (downloaded: number, total: number) => void,
+  metadata?: { readonly title: string; readonly artist: string; readonly album: string },
 ): Promise<string> {
   const progress = new Channel<DownloadProgressMsg>()
   progress.onmessage = (msg) => {
     onProgress(msg.downloaded, msg.total)
   }
-  return invoke<string>('download_file', { url, fileName, onProgress: progress })
+  return invoke<string>('download_file', {
+    url,
+    fileName,
+    onProgress: progress,
+    title: metadata?.title ?? null,
+    artist: metadata?.artist ?? null,
+    album: metadata?.album ?? null,
+  })
 }
 
 /** 删除下载文件（Rust 侧校验路径必须位于下载目录内）。 */

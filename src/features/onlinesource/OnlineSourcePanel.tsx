@@ -210,11 +210,12 @@ export function OnlineSourcePanel() {
         setHint('音源未返回可下载地址')
         return
       }
-      // 命名规范：作者 - 歌名（Rust 侧做安全清洗与扩展名推断）
+      // 命名规范：作者 - 歌名（人读）；元数据写入标签（机器识别），两者互不替代
       const path = await downloadFile(
         url,
         buildDownloadFileName(song.singer, song.name),
         (done, total) => setDownloadProgress({ done, total }),
+        { title: song.name, artist: song.singer, album: song.album },
       )
       addDownload({
         id: `${activeId}:${song.songmid}`,

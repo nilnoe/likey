@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use futures_util::StreamExt;
+use lofty::config::WriteOptions;
+use lofty::file::{AudioFile, TaggedFileExt};
+use lofty::tag::{ItemKey, Tag};
 use tauri::ipc::Channel;
 use tauri::Manager;
 
@@ -104,14 +107,46 @@ pub fn infer_extension(content_type: Option<&str>, url: &str) -> String {
     "mp3".to_string()
 }
 
-/// 下载音源曲目到应用数据目录 downloads/ 下，返回绝对路径。
-/// 已存在同内容（按最终文件名）则直接返回；流式写入并经 Channel 推送进度。
+/// 把曲目元数据写入文件标签（标题/艺术家/专辑）：
+/// 文件名只管人读，机器识别靠内嵌标签，任何播放器扫描都准确。
+/// 不支持的容器（如 ADTS 裸流）静默跳过。
+fn write_metadata_tags(path: &Path, title: &str, artist: &str, album: &str) {
+    let Ok(mut tagged) = lofty::read_from_path(path) else {
+        return;
+    };
+    let set_texts = |tag: &mut Tag| {
+        tag.insert_text(ItemKey::TrackTitle, title.to_string());
+        if !artist.is_empty() {
+            tag.insert_text(ItemKey::TrackArtist, artist.to_string());
+        }
+        if !album.is_empty() {
+            tag.insert_text(ItemKey::AlbumTitle, album.to_string());
+        }
+    };
+    if tagged.primary_tag().is_some() {
+        if let Some(tag) = tagged.primary_tag_mut() {
+            set_texts(tag);
+        }
+    } else {
+        let mut tag = Tag::new(tagged.primary_tag_type());
+        set_texts(&mut tag);
+        tagged.insert_tag(tag);
+    }
+    let _ = tagged.save_to_path(path, WriteOptions::default());
+}
+
+/// 下载音源曲目到 ~/Music/Mymusic，返回绝对路径。
+/// 已存在同内容（按最终文件名）则直接返回；流式写入并经 Channel 推送进度；
+/// 可选元数据（title/artist/album）在下载完成后写入文件标签。
 #[tauri::command]
 pub async fn download_file(
     app: tauri::AppHandle,
     url: String,
     file_name: String,
     on_progress: Channel<DownloadProgress>,
+    title: Option<String>,
+    artist: Option<String>,
+    album: Option<String>,
 ) -> Result<String, String> {
     let dir = downloads_dir(&app)?;
     let base = sanitize_file_name(&file_name);
@@ -152,6 +187,14 @@ pub async fn download_file(
         std::io::Write::write_all(&mut file, &chunk).map_err(|e| e.to_string())?;
         downloaded += chunk.len() as u64;
         let _ = on_progress.send(DownloadProgress { downloaded, total });
+    }
+    if let Some(t) = title.filter(|t| !t.trim().is_empty()) {
+        write_metadata_tags(
+            &path,
+            t.trim(),
+            artist.as_deref().unwrap_or(""),
+            album.as_deref().unwrap_or(""),
+        );
     }
     Ok(path.to_string_lossy().to_string())
 }
@@ -204,5 +247,32 @@ mod tests {
     fn infer_ext_falls_back_to_url_then_mp3() {
         assert_eq!(infer_extension(None, "https://x/song.m4a?sig=1"), "m4a");
         assert_eq!(infer_extension(None, "https://x/stream"), "mp3");
+    }
+
+    /// 集成测试：往真实 mp3（无标签测试音）写入元数据后可被读回。
+    #[test]
+    fn write_metadata_tags_roundtrip() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/fixtures/tone.mp3");
+        let tmp_dir = std::env::current_dir()
+            .expect("cwd")
+            .join("target/tmp-test");
+        std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+        let tmp = tmp_dir.join(format!("likey-tag-test-{}.mp3", std::process::id()));
+        std::fs::copy(&fixture, &tmp).expect("copy fixture");
+        write_metadata_tags(&tmp, "晴天", "周杰伦", "叶惠美");
+
+        let tagged = lofty::read_from_path(&tmp).expect("read back");
+        let tag = tagged.primary_tag().expect("id3v2 tag written");
+        use lofty::prelude::Accessor;
+        assert_eq!(tag.title().map(|s| s.to_string()).as_deref(), Some("晴天"));
+        assert_eq!(
+            tag.artist().map(|s| s.to_string()).as_deref(),
+            Some("周杰伦")
+        );
+        assert_eq!(
+            tag.album().map(|s| s.to_string()).as_deref(),
+            Some("叶惠美")
+        );
+        let _ = std::fs::remove_file(&tmp);
     }
 }
