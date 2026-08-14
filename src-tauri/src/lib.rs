@@ -1,6 +1,10 @@
+mod commands;
+mod models;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -11,6 +15,11 @@ pub fn run() {
             }
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            commands::metadata::read_metadata,
+            commands::metadata::read_cover,
+            commands::scan::scan_directory,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

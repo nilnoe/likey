@@ -1,14 +1,30 @@
-/** 播放列表条目（S1：内存态，File 句柄会话内有效；S3 起替换为路径型音乐库）。 */
+/** 曲目字节来源：本地文件句柄（拖放/文件选择）或资产协议 URL（音乐库）。 */
+export type TrackSource =
+  { readonly kind: 'file'; readonly file: File } | { readonly kind: 'url'; readonly url: string }
+
+/** 播放列表条目。 */
 export interface PlaylistTrack {
   readonly id: string
   readonly name: string
-  readonly file: File
+  readonly source: TrackSource
 }
 
 /** 曲目引用（播放内核加载契约，与缓存 key 同源）。 */
 export interface TrackRef {
   readonly id: string
   readonly name: string
+}
+
+/** 按来源读取音频字节（默认实现；单测可注入替代）。 */
+export async function defaultReadSource(source: TrackSource): Promise<ArrayBuffer> {
+  if (source.kind === 'file') {
+    return source.file.arrayBuffer()
+  }
+  const response = await fetch(source.url)
+  if (!response.ok) {
+    throw new Error(`音频读取失败: HTTP ${response.status}`)
+  }
+  return response.arrayBuffer()
 }
 
 export type RepeatMode = 'off' | 'all' | 'one'

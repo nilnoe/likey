@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { PlayerStatus } from './PlayerCore'
 import { QueueController, type QueuePlayer } from './QueueController'
-import { createShuffleOrder } from './Queue'
+import { createShuffleOrder, type PlaylistTrack, type TrackSource } from './Queue'
 
 /** 冲刷微任务队列（handleTrackEnd → playIndex → readFile → load 为多级 await）。 */
 async function flush(): Promise<void> {
@@ -56,13 +56,21 @@ function makeFiles(names: readonly string[]): File[] {
 function makeController(
   player: FakePlayer,
   seed = 0,
-): { controller: QueueController; readFile: ReturnType<typeof vi.fn> } {
-  const readFile = vi.fn(async (_file: File) => new ArrayBuffer(4))
+): { controller: QueueController; readSource: ReturnType<typeof vi.fn> } {
+  const readSource = vi.fn(async (_source: TrackSource) => new ArrayBuffer(4))
   const controller = new QueueController(player, {
-    readFile,
+    readSource,
     seedProvider: () => seed,
   })
-  return { controller, readFile }
+  return { controller, readSource }
+}
+
+function makeLibraryTracks(names: readonly string[]): PlaylistTrack[] {
+  return names.map((name) => ({
+    id: `lib-${name}`,
+    name,
+    source: { kind: 'url', url: `asset:///music/${name}` },
+  }))
 }
 
 describe('QueueController', () => {
@@ -85,6 +93,17 @@ describe('QueueController', () => {
     await controller.playIndex(2)
     expect(player.loaded.at(-1)?.name).toBe('c.mp3')
     expect(controller.getSnapshot().index).toBe(2)
+  })
+
+  it('addTracks appends library tracks and dedupes by id', async () => {
+    const player = new FakePlayer()
+    const { controller, readSource } = makeController(player)
+    await controller.addTracks(makeLibraryTracks(['a.mp3', 'b.mp3']), true)
+    expect(controller.getSnapshot().tracks).toHaveLength(2)
+    expect(player.loaded.map((t) => t.name)).toEqual(['a.mp3'])
+    expect(readSource).toHaveBeenCalledWith({ kind: 'url', url: 'asset:///music/a.mp3' })
+    await controller.addTracks(makeLibraryTracks(['a.mp3', 'c.mp3']))
+    expect(controller.getSnapshot().tracks).toHaveLength(3) // a 去重，新增 c
   })
 
   it('auto-advances on track end', async () => {

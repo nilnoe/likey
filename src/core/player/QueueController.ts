@@ -4,10 +4,12 @@ import {
   advanceAuto,
   advanceManual,
   createShuffleOrder,
+  defaultReadSource,
   retreatManual,
   type PlaylistTrack,
   type RepeatMode,
   type TrackRef,
+  type TrackSource,
 } from './Queue'
 
 /** 控制器所依赖的播放内核最小接口（PlayerCore 天然满足，单测注入 fake）。 */
@@ -36,13 +38,12 @@ export interface QueueControllerEvents {
 }
 
 export interface QueueControllerOptions {
-  /** 文件字节读取（测试注入，默认 file.arrayBuffer()）。 */
-  readonly readFile?: (file: File) => Promise<ArrayBuffer>
+  /** 曲目字节读取（测试注入，默认 defaultReadSource）。 */
+  readonly readSource?: (source: TrackSource) => Promise<ArrayBuffer>
   /** 洗牌种子来源（测试注入，默认随机）。 */
   readonly seedProvider?: () => number
 }
 
-const defaultReadFile = async (file: File): Promise<ArrayBuffer> => file.arrayBuffer()
 const defaultSeedProvider = (): number => (Math.random() * 2 ** 31) | 0
 
 /**
@@ -57,14 +58,14 @@ export class QueueController {
   private shuffleEnabled = false
   private order: readonly number[] | null = null
   private readonly player: QueuePlayer
-  private readonly readFile: (file: File) => Promise<ArrayBuffer>
+  private readonly readSource: (source: TrackSource) => Promise<ArrayBuffer>
   private readonly seedProvider: () => number
   private readonly emitter = new Emitter<QueueControllerEvents>()
   private readonly unsubscribeTrackEnd: () => void
 
   constructor(player: QueuePlayer, options: QueueControllerOptions = {}) {
     this.player = player
-    this.readFile = options.readFile ?? defaultReadFile
+    this.readSource = options.readSource ?? defaultReadSource
     this.seedProvider = options.seedProvider ?? defaultSeedProvider
     this.unsubscribeTrackEnd = player.onTrackEnd(() => {
       void this.handleTrackEnd()
@@ -104,10 +105,27 @@ export class QueueController {
   async addFiles(files: readonly File[], playFirst = false): Promise<void> {
     if (files.length === 0) return
     const firstIndex = this.tracks.length
-    this.tracks = [
-      ...this.tracks,
-      ...files.map((file) => ({ id: crypto.randomUUID(), name: file.name, file })),
-    ]
+    const tracks: PlaylistTrack[] = files.map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      source: { kind: 'file', file },
+    }))
+    this.tracks = [...this.tracks, ...tracks]
+    this.refreshOrder()
+    this.emitter.emit('queueChange', undefined)
+    if (playFirst && this.index === -1) {
+      await this.playIndex(firstIndex)
+    }
+  }
+
+  /** 追加既有曲目（音乐库等）；按 id 去重。 */
+  async addTracks(tracks: readonly PlaylistTrack[], playFirst = false): Promise<void> {
+    if (tracks.length === 0) return
+    const existing = new Set(this.tracks.map((t) => t.id))
+    const fresh = tracks.filter((t) => !existing.has(t.id))
+    if (fresh.length === 0) return
+    const firstIndex = this.tracks.length
+    this.tracks = [...this.tracks, ...fresh]
     this.refreshOrder()
     this.emitter.emit('queueChange', undefined)
     if (playFirst && this.index === -1) {
@@ -120,7 +138,7 @@ export class QueueController {
     if (track === undefined) return
     this.index = i
     this.emitter.emit('indexChange', i)
-    const data = await this.readFile(track.file)
+    const data = await this.readSource(track.source)
     if (this.index !== i) return // 读取期间用户已切曲
     await this.player.load({ id: track.id, name: track.name }, data)
     if (this.index !== i) return

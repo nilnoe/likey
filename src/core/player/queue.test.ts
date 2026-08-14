@@ -1,5 +1,39 @@
-import { describe, expect, it } from 'vitest'
-import { advanceAuto, advanceManual, createShuffleOrder, retreatManual } from './Queue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  advanceAuto,
+  advanceManual,
+  createShuffleOrder,
+  defaultReadSource,
+  retreatManual,
+} from './Queue'
+
+describe('defaultReadSource', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('reads File via arrayBuffer', async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], 'a.mp3')
+    const bytes = await defaultReadSource({ kind: 'file', file })
+    expect(new Uint8Array(bytes)).toEqual(new Uint8Array([1, 2, 3]))
+  })
+
+  it('reads URL via fetch and throws on HTTP error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new ArrayBuffer(4), { status: 200 })),
+    )
+    const bytes = await defaultReadSource({ kind: 'url', url: 'asset:///x.mp3' })
+    expect(bytes.byteLength).toBe(4)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 404 })),
+    )
+    await expect(defaultReadSource({ kind: 'url', url: 'asset:///x.mp3' })).rejects.toThrow(
+      'HTTP 404',
+    )
+  })
+})
 
 describe('createShuffleOrder', () => {
   it('is a permutation of all indices', () => {

@@ -14,7 +14,10 @@ interface QueueStoreState {
   readonly shuffle: boolean
   bind(player: QueuePlayer): void
   addFiles(files: readonly File[], playFirst?: boolean): Promise<void>
+  addTracks(tracks: readonly PlaylistTrack[], playFirst?: boolean): Promise<void>
   playIndex(index: number): Promise<void>
+  /** 播放音乐库曲目：已在队列则直接切过去，否则追加后播放。 */
+  playLibraryTrack(track: PlaylistTrack): Promise<void>
   next(): Promise<void>
   prev(): Promise<void>
   removeAt(index: number): void
@@ -47,8 +50,24 @@ export const useQueueStore = create<QueueStoreState>((set) => ({
     await controller?.addFiles(files, playFirst)
   },
 
+  addTracks: async (tracks, playFirst = false) => {
+    await controller?.addTracks(tracks, playFirst)
+  },
+
   playIndex: async (index) => {
     await controller?.playIndex(index)
+  },
+
+  playLibraryTrack: async (track) => {
+    if (controller === null) return
+    const existing = controller.getSnapshot().tracks.findIndex((t) => t.id === track.id)
+    if (existing >= 0) {
+      await controller.playIndex(existing)
+      return
+    }
+    const before = controller.getSnapshot().tracks.length
+    await controller.addTracks([track])
+    await controller.playIndex(before)
   },
 
   next: async () => {
