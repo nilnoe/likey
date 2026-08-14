@@ -35,7 +35,7 @@ describe('computePulse', () => {
 })
 
 interface FakeGradient {
-  addColorStop(): void
+  addColorStop(offset: number, color: string): void
 }
 
 interface FakeCtx {
@@ -51,8 +51,8 @@ interface FakeCtx {
 function makeFakeCtx(): { ctx: FakeCtx; calls: string[] } {
   const calls: string[] = []
   const gradient: FakeGradient = {
-    addColorStop: (): void => {
-      calls.push('addColorStop')
+    addColorStop: (offset: number, color: string): void => {
+      calls.push(`addColorStop(${offset},${color})`)
     },
   }
   const ctx: FakeCtx = {
@@ -107,6 +107,20 @@ describe('SpectrumBarRenderer', () => {
     // 四象限镜像：4 柱 × 4 象限 × 2 帧 = 32 圆角柱；峰值线 4 柱 × 4 象限 × 2 帧 = 32 条
     expect(calls.filter((c) => c === 'roundRect')).toHaveLength(32)
     expect(calls.filter((c) => c === 'fillRect')).toHaveLength(32)
+  })
+
+  it('mirror fills Q1/Q3 with the same gradient at reduced alpha', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 2, mirror: true })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.5, 0.25]), 0)
+    // 前两个 stop 是主渐变原色，后两个是同色 0.45 透明度的倒影渐变
+    expect(calls.filter((c) => c.startsWith('addColorStop'))).toEqual([
+      'addColorStop(0,#22d3ee)',
+      'addColorStop(1,#a855f7)',
+      'addColorStop(0,rgba(34, 211, 238, 0.45))',
+      'addColorStop(1,rgba(168, 85, 247, 0.45))',
+    ])
   })
 
   it('renders non-mirror rectangular bars without peaks when disabled', () => {

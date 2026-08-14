@@ -7,11 +7,13 @@ import {
   updatePeaks,
   type SpectrumStyle,
 } from './SpectrumStyle'
-import { complementaryHex } from './color'
+import { hexWithAlpha } from './color'
 
 const PEAK_LINE_HEIGHT = 2
 const PEAK_COLOR = 'rgba(255, 255, 255, 0.75)'
-const COMPLEMENT_PEAK_COLOR = 'rgba(255, 255, 255, 0.45)'
+/** Q1/Q3 倒影象限的透明度：同主渐变淡化为水面倒影。 */
+const FADE_ALPHA = 0.45
+const FADED_PEAK_COLOR = 'rgba(255, 255, 255, 0.35)'
 
 /**
  * 千千静听风频谱柱渲染器（Canvas 2D）。
@@ -25,7 +27,7 @@ export class SpectrumBarRenderer {
   private peaks: Float32Array
   private pulse = 0
   private gradient: CanvasGradient | null = null
-  private complementGradient: CanvasGradient | null = null
+  private fadedGradient: CanvasGradient | null = null
 
   constructor(style: Partial<SpectrumStyle> = {}) {
     this.style = { ...DEFAULT_SPECTRUM_STYLE, ...style }
@@ -50,7 +52,7 @@ export class SpectrumBarRenderer {
       this.peaks = new Float32Array(this.style.barCount)
     }
     this.gradient = null
-    this.complementGradient = null
+    this.fadedGradient = null
   }
 
   /** 依据 CSS 尺寸 × devicePixelRatio 重建画布物理尺寸。 */
@@ -64,7 +66,7 @@ export class SpectrumBarRenderer {
     canvas.width = Math.max(1, Math.round(rect.width * dpr))
     canvas.height = Math.max(1, Math.round(rect.height * dpr))
     this.gradient = null
-    this.complementGradient = null
+    this.fadedGradient = null
   }
 
   render(frame: SpectrumFrame, beatStrength: number): void {
@@ -97,17 +99,17 @@ export class SpectrumBarRenderer {
     const baseY = height / 2
     const halfHeight = mirror ? height / 2 : height
     const primary = this.ensureGradient(height)
-    const complementary = mirror ? this.ensureComplementGradient(height) : primary
+    const faded = mirror ? this.ensureFadedGradient(height) : primary
 
     for (let i = 0; i < count; i++) {
       const value = this.values[i] ?? 0
       const barHeight = Math.max(0.5, value * halfHeight * pulseScale)
       if (mirror) {
-        // 四象限补全：Q2/Q4 原渐变，Q1/Q3 互补色（原为空的高频象限补满）
+        // 四象限补全：Q2/Q4 原渐变，Q1/Q3 同色淡化（水面倒影）
         ctx.fillStyle = primary
         this.drawBar(slot * i, baseY - barHeight, barWidth, barHeight) // Q2（左上）
         this.drawBar(slot * (total - i - 1), baseY, barWidth, barHeight) // Q4（右下）
-        ctx.fillStyle = complementary
+        ctx.fillStyle = faded
         this.drawBar(slot * (total - i - 1), baseY - barHeight, barWidth, barHeight) // Q1（右上）
         this.drawBar(slot * i, baseY, barWidth, barHeight) // Q3（左下）
       } else {
@@ -128,7 +130,7 @@ export class SpectrumBarRenderer {
             barWidth,
             PEAK_LINE_HEIGHT,
           ) // Q4
-          ctx.fillStyle = COMPLEMENT_PEAK_COLOR
+          ctx.fillStyle = FADED_PEAK_COLOR
           ctx.fillRect(slot * (total - i - 1), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q1
           ctx.fillRect(slot * i, baseY + peakHeight - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT) // Q3
         } else {
@@ -162,17 +164,17 @@ export class SpectrumBarRenderer {
     return this.gradient ?? this.style.gradient[0] ?? '#22d3ee'
   }
 
-  /** 互补色渐变（Q1/Q3 象限用）：主渐变两端的互补色。 */
-  private ensureComplementGradient(height: number): string | CanvasGradient {
-    if (this.complementGradient === null && this.ctx !== null) {
+  /** 淡化渐变（Q1/Q3 倒影象限用）：与主渐变同色，仅降低透明度。 */
+  private ensureFadedGradient(height: number): string | CanvasGradient {
+    if (this.fadedGradient === null && this.ctx !== null) {
       const [c1, c2] = this.style.gradient
-      const comp1 = complementaryHex(c1 ?? '#22d3ee') ?? '#ff5c8a'
-      const comp2 = complementaryHex(c2 ?? '#a855f7') ?? '#57aa08'
+      const faded1 = hexWithAlpha(c1 ?? '#22d3ee', FADE_ALPHA) ?? c1 ?? '#22d3ee'
+      const faded2 = hexWithAlpha(c2 ?? '#a855f7', FADE_ALPHA) ?? c2 ?? '#a855f7'
       const gradient = this.ctx.createLinearGradient(0, 0, 0, height)
-      gradient.addColorStop(0, comp1)
-      gradient.addColorStop(1, comp2)
-      this.complementGradient = gradient
+      gradient.addColorStop(0, faded1)
+      gradient.addColorStop(1, faded2)
+      this.fadedGradient = gradient
     }
-    return this.complementGradient ?? this.style.gradient[0] ?? '#22d3ee'
+    return this.fadedGradient ?? this.style.gradient[0] ?? '#22d3ee'
   }
 }

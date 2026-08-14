@@ -1,40 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { complementaryHex, hexToRgb, hslToRgb, rgbToHex, rgbToHsl } from './color'
+import { hexToRgb, hexWithAlpha } from './color'
 
-describe('hexToRgb / rgbToHex', () => {
-  it('round-trips known colors', () => {
+describe('hexToRgb', () => {
+  it('parses 6-digit hex with or without #', () => {
     expect(hexToRgb('#ff0000')).toEqual([255, 0, 0])
     expect(hexToRgb('#22d3ee')).toEqual([0x22, 0xd3, 0xee])
     expect(hexToRgb('ff00ff')).toEqual([255, 0, 255])
+  })
+
+  it('returns null for invalid input', () => {
     expect(hexToRgb('garbage')).toBeNull()
-    expect(rgbToHex([255, 0, 0])).toBe('#ff0000')
+    expect(hexToRgb('#123')).toBeNull()
   })
 })
 
-describe('rgbToHsl / hslToRgb', () => {
-  it('round-trips', () => {
-    for (const hex of ['#ff0000', '#22d3ee', '#a855f7', '#808080', '#0b0f14']) {
-      const rgb = hexToRgb(hex)
-      expect(rgb).not.toBeNull()
-      const hsl = rgbToHsl(rgb!)
-      const back = rgbToHex(hslToRgb(hsl))
-      expect(back).toBe(hex)
-    }
-  })
-})
-
-describe('complementaryHex', () => {
-  it('shifts hue by 180 degrees', () => {
-    expect(complementaryHex('#ff0000')).toBe('#00ffff') // 红 → 青
-    expect(complementaryHex('#0000ff')).toBe('#ffff00') // 蓝 → 黄
-    expect(complementaryHex('#808080')).toBe('#808080') // 灰不变
-    expect(complementaryHex('bad')).toBeNull()
+describe('hexWithAlpha', () => {
+  it('produces rgba() with the given alpha', () => {
+    expect(hexWithAlpha('#22d3ee', 0.45)).toBe('rgba(34, 211, 238, 0.45)')
+    expect(hexWithAlpha('#a855f7', 0.45)).toBe('rgba(168, 85, 247, 0.45)')
   })
 
-  it('is an involution (double complement returns original)', () => {
-    const original = '#22d3ee'
-    const comp = complementaryHex(original)
-    expect(comp).not.toBeNull()
-    expect(complementaryHex(comp!)).toBe(original)
+  it('clamps alpha to [0, 1]', () => {
+    expect(hexWithAlpha('#ffffff', -0.5)).toBe('rgba(255, 255, 255, 0)')
+    expect(hexWithAlpha('#ffffff', 1.5)).toBe('rgba(255, 255, 255, 1)')
+  })
+
+  it('returns null for invalid hex', () => {
+    expect(hexWithAlpha('bad', 0.5)).toBeNull()
   })
 })
