@@ -40,6 +40,7 @@ interface FakeGradient {
 
 interface FakeCtx {
   canvas: { width: number; height: number }
+  fillStyle: string
   clearRect(): void
   fillRect(): void
   beginPath(): void
@@ -69,6 +70,7 @@ function makeFakeCtx(): { ctx: FakeCtx; calls: string[] } {
   }
   const ctx: FakeCtx = {
     canvas: { width: 300, height: 150 },
+    fillStyle: '',
     clearRect: (): void => {
       calls.push('clearRect')
     },
@@ -111,6 +113,13 @@ function makeFakeCtx(): { ctx: FakeCtx; calls: string[] } {
       return radialGradient
     },
   }
+  // 记录 fillStyle 赋值（字符串记颜色，渐变对象记 gradient），供纯色模式断言
+  Object.defineProperty(ctx, 'fillStyle', {
+    configurable: true,
+    set: (value: unknown): void => {
+      calls.push(typeof value === 'string' ? `fillStyle(${value})` : 'fillStyle(gradient)')
+    },
+  })
   return { ctx, calls }
 }
 
@@ -311,5 +320,21 @@ describe('SpectrumBarRenderer', () => {
     expect(bars[0]).toBe('roundRect(75.0,37.5,33.0)') // i=0 合并柱 (max(0.5,0.25)=0.5) 贴中线
     expect(bars[1]).toBe('roundRect(150.0,37.5,33.0)') // Q1
     expect(bars[4]).toBe('roundRect(0.0,18.8,33.0)') // i=1 合并柱 (max(0.75,0)=0.75) 回外缘
+  })
+
+  it('green mode draws single-row pure rectangles in solid dark green', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 4, mode: 'green' })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.5, 0.25, 0.75, 0]), 0)
+    // 单排：2 根合并矩形柱 + 2 条峰值线 = 4 次 fillRect（无镜像/倒影的 4 象限放大）
+    expect(calls.filter((c) => c === 'fillRect')).toHaveLength(4)
+    // 纯矩形：无圆角、无液体弧面
+    expect(calls).not.toContain('roundRect')
+    expect(calls).not.toContain('closePath')
+    expect(calls).not.toContain('stroke')
+    // 纯净深绿纯色填充（非渐变）
+    expect(calls).toContain('fillStyle(#166534)')
+    expect(calls).not.toContain('fillStyle(#22d3ee)')
   })
 })

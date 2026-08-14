@@ -10,8 +10,8 @@ export interface SpectrumStyle {
   readonly beatPulse: boolean
   /** 背景氛围光晕：色温随频段、透明度随能量 + 节拍呼吸 */
   readonly glow: boolean
-  /** 视觉形态：bars = 频谱柱，liquid = 无缝弧面液体剪影，chunky = 加宽胶囊柱 */
-  readonly mode: 'bars' | 'liquid' | 'chunky'
+  /** 视觉形态：bars = 频谱柱，liquid = 液体剪影，chunky = 加宽胶囊柱，green = 深绿电平表（单排纯色） */
+  readonly mode: 'bars' | 'liquid' | 'chunky' | 'green'
 }
 
 export const DEFAULT_SPECTRUM_STYLE: SpectrumStyle = {

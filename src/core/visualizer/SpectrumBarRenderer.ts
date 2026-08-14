@@ -20,6 +20,8 @@ const FADED_PEAK_COLOR = 'rgba(255, 255, 255, 0.35)'
 const SURFACE_RIM_TOP = 'rgba(255, 255, 255, 0.4)'
 const SURFACE_RIM_BOTTOM = 'rgba(255, 255, 255, 0.22)'
 const SURFACE_LINE_WIDTH = 1.5
+/** 深绿电平表模式：纯净深绿纯色填充。 */
+const GREEN_BAR = '#166534'
 
 /**
  * 千千静听风频谱柱渲染器（Canvas 2D）。
@@ -117,6 +119,8 @@ export class SpectrumBarRenderer {
       this.drawLiquid(width, height)
     } else if (this.style.mode === 'chunky') {
       this.drawChunky(width, height)
+    } else if (this.style.mode === 'green') {
+      this.drawGreen(width, height)
     } else {
       this.drawBars(width, height)
     }
@@ -154,6 +158,34 @@ export class SpectrumBarRenderer {
       (i) => Math.max(this.values[i * 2] ?? 0, this.values[i * 2 + 1] ?? 0),
       (i) => Math.max(this.peaks[i * 2] ?? 0, this.peaks[i * 2 + 1] ?? 0),
     )
+  }
+
+  /**
+   * 深绿电平表模式：单排加宽纯矩形柱，纯净深绿纯色填充。
+   * 强制无镜像（忽略 mirror）、无倒影渐变、无圆角（忽略 rounded），
+   * 只保留峰值线与节拍脉冲。
+   */
+  private drawGreen(width: number, height: number): void {
+    const ctx = this.ctx
+    if (ctx === null) return
+    const count = Math.max(1, Math.ceil(this.values.length / 2))
+    const slot = width / count
+    const barWidth = Math.max(1, slot - Math.max(1, slot * 0.12))
+    const pulseScale = 1 + 0.05 * this.pulse
+    ctx.fillStyle = GREEN_BAR
+    for (let i = 0; i < count; i++) {
+      const value = Math.max(this.values[i * 2] ?? 0, this.values[i * 2 + 1] ?? 0)
+      const barHeight = this.barHeightOf(value, height, pulseScale)
+      ctx.fillRect(slot * i, height - barHeight, barWidth, barHeight)
+    }
+    if (this.style.peakHold) {
+      for (let i = 0; i < count; i++) {
+        const peak = Math.max(this.peaks[i * 2] ?? 0, this.peaks[i * 2 + 1] ?? 0)
+        const peakY = peak * height * pulseScale
+        ctx.fillStyle = PEAK_COLOR
+        ctx.fillRect(slot * i, height - peakY - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT)
+      }
+    }
   }
 
   /** 柱网格通用绘制：四象限低频居中 + 完全倒影 + 峰值线。 */
