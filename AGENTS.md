@@ -57,8 +57,12 @@ pnpm gate          # G1+G2+G3 质量门
 pnpm test          # Vitest 单测
 pnpm tauri build   # 发布构建（里程碑节点）
 node scripts/generate-source-probe-html.mjs   # 生成音源运行时探测页（真实源码零漂移）
-swift scripts/webview-source-probe.swift      # 系统 WKWebView 验证音源运行时契约（7/7 项）
+swift scripts/webview-source-probe.swift      # 系统 WKWebView 验证音源运行时契约（10/10 项）
+sh scripts/clean-build-cache.sh               # 清 debug 构建缓存（target/debug 会膨胀到数 GB）
 ```
+
+> `.devrc` 仅供受限沙箱代理使用（重定向缓存到仓库内）；普通开发者终端请勿 source，
+> 否则包管理缓存会堆进项目目录。
 
 ## 已知技术风险（开发中随时留意）
 

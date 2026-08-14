@@ -9,11 +9,23 @@
 ## 开发
 
 ```bash
-source .devrc       # 重定向包管理缓存到仓库内（沙箱环境必须）
 pnpm install
 pnpm tauri dev      # 桌面运行
 pnpm dev            # 纯 Web 调试（浏览器）
 ```
+
+> `source .devrc` 仅 AI 代理沙箱环境需要（把包管理缓存重定向到仓库内）。
+> **你自己终端开发不需要**，缓存会存到系统默认位置（~/.cargo 等），不会堆在项目目录里。
+
+## 清理构建缓存
+
+```bash
+sh scripts/clean-build-cache.sh            # 清 debug 构建缓存（~7.7GB，下次构建重编译 1–2 分钟）
+sh scripts/clean-build-cache.sh --aggressive  # 连依赖缓存一起清（需重新下载/安装）
+```
+
+> 说明：项目目录偏大的原因是 Rust debug 构建缓存（target/debug ≈ 8GB，clippy/check/test
+> 多套编译指纹叠加）。git 仓库本体仅 ~1MB，全部缓存均已 gitignore，删除不影响代码。
 
 ## 质量门
 
