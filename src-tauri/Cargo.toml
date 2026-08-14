@@ -31,3 +31,6 @@ tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-http = "2.5.9"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 futures-util = "0.3.34"
+
+[profile.dev]
+debug = 1
