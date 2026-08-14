@@ -4,6 +4,12 @@ import { SpectrumExtractor } from '../../core/analysis/SpectrumExtractor'
 import { PlayerCore, type PlayerStatus } from '../../core/player/PlayerCore'
 import { WebAudioBackend } from '../../core/player/WebAudioBackend'
 import { useQueueStore } from '../../state/queueStore'
+import {
+  configureMediaSession,
+  listenGlobalShortcut,
+  listenTrayCommands,
+  updateMediaMetadata,
+} from './desktopIntegration'
 import { loadQueue } from './persistence'
 
 /** 播放引擎：一次会话内稳定的 core 实例集合。 */
@@ -61,13 +67,61 @@ export function usePlayerEngine(): {
         useQueueStore.getState().restore(persisted)
       }
     })
-    const unsubscribe = engine.player.onStatusChange(setStatus)
+    const unlisteners: Array<() => void> = []
+
+    const toggle = (): void => {
+      const current = engine.player.getStatus()
+      if (current.kind === 'playing') {
+        engine.player.pause()
+      } else if (current.kind === 'ready') {
+        void engine.player.play()
+      }
+    }
+
+    // 系统托盘命令
+    void listenTrayCommands((command) => {
+      if (command === 'toggle') {
+        toggle()
+      } else if (command === 'next') {
+        void useQueueStore.getState().next()
+      } else if (command === 'prev') {
+        void useQueueStore.getState().prev()
+      }
+    }).then((unlisten) => {
+      if (unlisten !== null) unlisteners.push(unlisten)
+    })
+
+    // 全局快捷键 CmdOrCtrl+Shift+Space
+    void listenGlobalShortcut(toggle).then((unlisten) => {
+      if (unlisten !== null) unlisteners.push(unlisten)
+    })
+
+    // 系统媒体会话（Now Playing / 媒体键）
+    configureMediaSession({
+      toggle,
+      next: () => void useQueueStore.getState().next(),
+      prev: () => void useQueueStore.getState().prev(),
+      seekBy: (seconds) => {
+        engine.player.seek(engine.player.getPosition() + seconds)
+      },
+    })
+
+    const unsubscribe = engine.player.onStatusChange((status) => {
+      setStatus(status)
+      updateMediaMetadata(
+        status.kind === 'idle' ? null : status.trackName,
+        status.kind === 'playing',
+      )
+    })
     const interval = window.setInterval(() => {
       setPosition(engine.player.getPosition())
     }, 250)
     return () => {
       unsubscribe()
       window.clearInterval(interval)
+      for (const unlisten of unlisteners) {
+        unlisten()
+      }
     }
   }, [engine])
 
