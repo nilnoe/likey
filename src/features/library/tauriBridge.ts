@@ -50,6 +50,8 @@ export interface DownloadMeta {
   readonly album: string
   readonly artworkUrl?: string
   readonly lyrics?: string
+  /** m4a 下载后经 ffmpeg 转码 mp3（访达对 mp3 内嵌封面显示更稳）。 */
+  readonly transcodeMp3?: boolean
 }
 
 /**
@@ -102,4 +104,9 @@ export async function ytdlSearch(query: string, limit = 20): Promise<YtTrack[]> 
 /** YouTube 取流地址（强制 m4a/AAC，WKWebView 不支持 Opus/WebM）。 */
 export async function ytdlUrl(videoId: string): Promise<string> {
   return invoke<string>('ytdl_url', { videoId })
+}
+
+/** YouTube 字幕歌词（yt-dlp 抓 VTT → LRC；无字幕返回 null）。 */
+export async function ytdlLyrics(videoId: string): Promise<string | null> {
+  return invoke<string | null>('ytdl_lyrics', { videoId })
 }

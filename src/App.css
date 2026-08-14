@@ -547,6 +547,14 @@
   font-size: 13px;
 }
 
+.online-mp3-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .online-hint {
   color: var(--muted);
   font-size: 12px;

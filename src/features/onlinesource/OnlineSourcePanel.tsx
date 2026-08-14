@@ -6,7 +6,13 @@ import {
   type MusicQuality,
   type SourceSong,
 } from '../../core/onlinesource/protocol'
-import { deleteDownload, downloadFile, ytdlSearch, ytdlUrl } from '../library/tauriBridge'
+import {
+  deleteDownload,
+  downloadFile,
+  ytdlLyrics,
+  ytdlSearch,
+  ytdlUrl,
+} from '../library/tauriBridge'
 import { useDownloadsStore } from '../../state/downloadsStore'
 import { useLibraryStore } from '../../state/libraryStore'
 import { useLyricOverrideStore } from '../../state/lyricOverrideStore'
@@ -62,6 +68,7 @@ export function OnlineSourcePanel() {
   )
   const [keyword, setKeyword] = useState('')
   const [quality, setQuality] = useState<MusicQuality>('128k')
+  const [transcodeMp3, setTranscodeMp3] = useState(true)
   const [results, setResults] = useState<readonly SourceSong[]>([])
   const [searching, setSearching] = useState(false)
   const [busySong, setBusySong] = useState<string | null>(null)
@@ -199,13 +206,24 @@ export function OnlineSourcePanel() {
   }
 
   async function handleLyric(song: SourceSong): Promise<void> {
+    setHint(null)
     if (activeSource?.native === 'youtube') {
-      setHint('该音源暂不提供歌词（可下载后手动加载 .lrc）')
+      try {
+        setHint('正在抓取字幕…')
+        const lrc = await ytdlLyrics(song.songmid)
+        if (lrc === null || lrc.trim() === '') {
+          setHint('该视频没有可用字幕（歌词版视频通常有）')
+          return
+        }
+        setLyricOverride(lrc)
+        setHint('已加载 YouTube 字幕歌词')
+      } catch (error) {
+        setHint(error instanceof Error ? error.message : String(error))
+      }
       return
     }
     const runtime = runtimeRef.current
     if (runtime === null) return
-    setHint(null)
     try {
       const lyric = await runtime.getLyric(song.songmid)
       if (lyric === null || lyric.trim() === '') {
@@ -238,6 +256,12 @@ export function OnlineSourcePanel() {
       let lyrics: string | null = null
       if (activeSource?.native === 'youtube') {
         url = await ytdlUrl(song.songmid)
+        // 歌词可选：字幕缺失不阻断下载
+        try {
+          lyrics = await ytdlLyrics(song.songmid)
+        } catch {
+          lyrics = null
+        }
       } else {
         const runtime = runtimeRef.current
         if (runtime === null) return
@@ -264,6 +288,7 @@ export function OnlineSourcePanel() {
           album: song.album,
           artworkUrl: song.img || undefined,
           lyrics: lyrics ?? undefined,
+          transcodeMp3,
         },
       )
       addDownload({
@@ -365,6 +390,14 @@ export function OnlineSourcePanel() {
         >
           {searching ? '搜索中…' : '搜索'}
         </button>
+        <label className="online-mp3-toggle">
+          <input
+            type="checkbox"
+            checked={transcodeMp3}
+            onChange={(event) => setTranscodeMp3(event.target.checked)}
+          />
+          下载为 MP3
+        </label>
       </div>
       {hint !== null && <div className="online-hint">{hint}</div>}
       {downloadingSong !== null && (

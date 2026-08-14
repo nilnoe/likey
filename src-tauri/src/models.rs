@@ -50,6 +50,8 @@ pub struct DownloadMeta {
     pub album: Option<String>,
     pub artwork_url: Option<String>,
     pub lyrics: Option<String>,
+    /// m4a 下载完成后用 ffmpeg 转码为 mp3（访达对 mp3 内嵌封面支持更稳）。
+    pub transcode_mp3: Option<bool>,
 }
 
 /// YouTube 搜索结果音轨（yt-dlp sidecar 映射）。

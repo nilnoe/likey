@@ -228,12 +228,12 @@ pub async fn download_file(
     } else {
         infer_extension(content_type.as_deref(), &url)
     };
-    let final_name = if base.to_ascii_lowercase().ends_with(&format!(".{ext}")) {
+    let mut final_name = if base.to_ascii_lowercase().ends_with(&format!(".{ext}")) {
         base
     } else {
         format!("{base}.{ext}")
     };
-    let path = dir.join(&final_name);
+    let mut path = dir.join(&final_name);
     if path.is_file() {
         return Ok(crate::models::DownloadResult {
             path: path.to_string_lossy().to_string(),
@@ -256,6 +256,21 @@ pub async fn download_file(
             downloaded += chunk.len() as u64;
             let _ = on_progress.send(DownloadProgress { downloaded, total });
         }
+    }
+
+    // 转码 MP3（可选）：访达对 m4a 内嵌封面显示不稳，mp3(ID3) 稳定
+    if should_transcode(&meta, &ext, ffmpeg_available()) {
+        let mp3_path = transcode_to_mp3(&path).await?;
+        final_name = mp3_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&final_name)
+            .to_string();
+        path = mp3_path;
+        let _ = on_progress.send(DownloadProgress {
+            downloaded: 1,
+            total: 1,
+        });
     }
 
     // 封面：抓取 → 落盘 covers/ → 嵌入标签
@@ -317,6 +332,61 @@ pub fn delete_download(app: tauri::AppHandle, path: String) -> Result<(), String
 }
 
 const GV_CHUNK_SIZE: u64 = 512 * 1024;
+
+/// 转码决策：显式要求 + m4a 源 + ffmpeg 可用（纯函数可单测）。
+pub fn should_transcode(
+    meta: &crate::models::DownloadMeta,
+    ext: &str,
+    ffmpeg_available: bool,
+) -> bool {
+    meta.transcode_mp3.unwrap_or(false) && ext == "m4a" && ffmpeg_available
+}
+
+fn ffmpeg_available() -> bool {
+    std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// m4a → mp3（ffmpeg/libmp3lame 192k）；成功后替换原文件。
+async fn transcode_to_mp3(path: &Path) -> Result<PathBuf, String> {
+    let mp3_path = path.with_extension("mp3");
+    let tmp_path = path.with_extension("mp3.transcoding");
+    let status = tauri::async_runtime::spawn_blocking({
+        let input = path.to_path_buf();
+        let tmp = tmp_path.clone();
+        move || {
+            std::process::Command::new("ffmpeg")
+                .args([
+                    "-y",
+                    "-i",
+                    input.to_str().unwrap_or(""),
+                    "-vn",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "192k",
+                    tmp.to_str().unwrap_or(""),
+                ])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    if !status.success() {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err("转码 mp3 失败（ffmpeg）".to_string());
+    }
+    std::fs::remove_file(path).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp_path, &mp3_path).map_err(|e| e.to_string())?;
+    Ok(mp3_path)
+}
 
 /// 解析 Content-Range 总长："bytes 0-1023/5152105" → 5152105。
 fn parse_content_range_total(value: Option<&str>) -> Option<u64> {
@@ -435,6 +505,17 @@ mod tests {
         );
         assert_eq!(parse_content_range_total(Some("garbage")), None);
         assert_eq!(parse_content_range_total(None), None);
+    }
+
+    #[test]
+    fn should_transcode_matrix() {
+        let mut meta = crate::models::DownloadMeta::default();
+        assert!(!should_transcode(&meta, "m4a", true));
+        meta.transcode_mp3 = Some(true);
+        assert!(should_transcode(&meta, "m4a", true));
+        assert!(!should_transcode(&meta, "m4a", false)); // 无 ffmpeg
+        assert!(!should_transcode(&meta, "mp3", true)); // 非 m4a
+        assert!(!should_transcode(&meta, "flac", true));
     }
 
     /// 集成测试：往真实 mp3（无标签测试音）写入元数据后可被读回。

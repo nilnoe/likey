@@ -155,9 +155,157 @@ pub async fn ytdl_url(video_id: String) -> Result<String, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// 时间戳 "HH:MM:SS.mmm" → LRC 标记 "[mm:ss.xx]"。
+fn format_timestamp(start: &str) -> Option<String> {
+    let mut it = start.split(':');
+    let h: u64 = it.next()?.trim().parse().ok()?;
+    let m: u64 = it.next()?.trim().parse().ok()?;
+    let s: f64 = it.next()?.trim().parse().ok()?;
+    let total_secs = (h * 3600 + m * 60) as f64 + s;
+    let mm = (total_secs / 60.0).floor() as u64;
+    let ss = total_secs % 60.0;
+    Some(format!("[{mm:02}:{ss:05.2}]"))
+}
+
+/// 去除 VTT 行内标签（<c>、</c> 等）。
+fn strip_tags(s: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in s.chars() {
+        if c == '<' {
+            in_tag = true;
+            continue;
+        }
+        if c == '>' {
+            in_tag = false;
+            continue;
+        }
+        if !in_tag {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// VTT 字幕 → LRC（纯函数可单测）：cue 多行文本拼接、去标签、跳过头部元数据。
+pub fn vtt_to_lrc(vtt: &str) -> String {
+    let mut out = String::new();
+    let mut pending_text: Vec<String> = Vec::new();
+    let mut last_time: Option<String> = None;
+    let flush = |out: &mut String, time: &mut Option<String>, text: &mut Vec<String>| {
+        if let Some(t) = time.take() {
+            let joined = text.join(" ").trim().to_string();
+            if !joined.is_empty() {
+                out.push_str(&t);
+                out.push_str(&joined);
+                out.push('\n');
+            }
+        }
+        text.clear();
+    };
+    for raw in vtt.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            flush(&mut out, &mut last_time, &mut pending_text);
+            continue;
+        }
+        if line.starts_with("WEBVTT")
+            || line.starts_with("Kind:")
+            || line.starts_with("Language:")
+            || line == "NOTE"
+            || line.starts_with("NOTE ")
+        {
+            continue;
+        }
+        if line.contains("-->") {
+            let start = line.split("-->").next().unwrap_or("").trim();
+            if let Some(t) = format_timestamp(start) {
+                flush(&mut out, &mut last_time, &mut pending_text);
+                last_time = Some(t);
+            }
+            continue;
+        }
+        let text = strip_tags(line);
+        if !text.is_empty() {
+            pending_text.push(text);
+        }
+    }
+    flush(&mut out, &mut last_time, &mut pending_text);
+    out
+}
+
+/// YouTube 字幕歌词（yt-dlp 抓取 VTT → LRC；无字幕返回 None）。
+#[tauri::command]
+pub async fn ytdl_lyrics(video_id: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let tmp_dir = std::env::temp_dir().join(format!("likey-lyrics-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+        let prefix = tmp_dir.join("sub");
+        let watch = format!("https://www.youtube.com/watch?v={video_id}");
+        let _ = run_ytdl(
+            &[
+                "--skip-download",
+                "--write-subs",
+                "--write-auto-subs",
+                "--sub-format",
+                "vtt",
+                "--no-warnings",
+                "-o",
+                prefix.to_str().unwrap_or("sub"),
+                &watch,
+            ],
+            SEARCH_TIMEOUT,
+        );
+        let mut found: Option<String> = None;
+        if let Ok(entries) = std::fs::read_dir(&tmp_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|x| x.to_str()) == Some("vtt") {
+                    if let Ok(text) = std::fs::read_to_string(&path) {
+                        found = Some(vtt_to_lrc(&text));
+                        break;
+                    }
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        Ok(found.filter(|s| !s.trim().is_empty()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vtt_to_lrc_converts_and_strips_tags() {
+        let vtt = "WEBVTT\nKind: captions\nLanguage: en\n\n00:00:00.300 --> 00:00:19.200\nqíng tiān zhōu jié lún\n\n00:00:28.000 --> 00:00:34.800\n<c>gù shì</c> de xiǎo huáng huā\nsecond line\n";
+        let lrc = vtt_to_lrc(vtt);
+        assert!(lrc.contains("[00:00.30]qíng tiān zhōu jié lún"));
+        assert!(lrc.contains("[00:28.00]gù shì de xiǎo huáng huā second line"));
+        assert!(!lrc.contains("WEBVTT"));
+        assert!(!lrc.contains("<c>"));
+    }
+
+    #[test]
+    fn vtt_to_lrc_handles_empty() {
+        assert_eq!(vtt_to_lrc("WEBVTT\n"), "");
+        assert_eq!(vtt_to_lrc(""), "");
+    }
+
+    #[test]
+    fn format_timestamp_outputs_lrc_marks() {
+        assert_eq!(
+            format_timestamp("00:01:05.500").as_deref(),
+            Some("[01:05.50]")
+        );
+        assert_eq!(
+            format_timestamp("01:02:03.000").as_deref(),
+            Some("[62:03.00]")
+        );
+    }
 
     #[test]
     fn split_title_basic_and_markers() {

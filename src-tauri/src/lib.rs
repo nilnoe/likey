@@ -67,6 +67,7 @@ pub fn run() {
             commands::download::get_downloads_dir,
             commands::ytdl::ytdl_search,
             commands::ytdl::ytdl_url,
+            commands::ytdl::ytdl_lyrics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
