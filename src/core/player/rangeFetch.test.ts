@@ -43,7 +43,7 @@ describe('isGooglevideoHost', () => {
 
 describe('fetchBytesRangeAware', () => {
   function makeImpl(total: number, records: Array<{ range: string | null }>): RangeFetchImpl {
-    return vi.fn(async (url: string, init: { headers: Record<string, string> }) => {
+    return vi.fn(async (_url: string, init: { headers: Record<string, string> }) => {
       const range = init.headers['Range'] ?? null
       records.push({ range })
       const isProbe = range === 'bytes=0-0'
