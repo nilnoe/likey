@@ -7,6 +7,7 @@ import {
   type TrackSource,
 } from '../core/player/Queue'
 import { saveQueue, type RestoredQueue } from '../features/player/persistence'
+import { fetchBytesRangeAware, isGooglevideoHost } from '../core/player/rangeFetch'
 
 /**
  * 默认浏览器 UA：部分音乐 CDN（Audius 等）校验 User-Agent，
@@ -21,7 +22,28 @@ async function readSourceNativeHttp(source: TrackSource): Promise<ArrayBuffer> {
   if (source.kind === 'url' && /^https?:\/\//i.test(source.url)) {
     try {
       const { fetch } = await import('@tauri-apps/plugin-http')
-      const response = await fetch(source.url, { headers: { 'User-Agent': BROWSER_UA } })
+      const headers = { 'User-Agent': BROWSER_UA }
+      // googlevideo 拒绝无 Range 的整包请求 → 分块小 Range 抓取（浏览器同款策略）
+      let hostname = ''
+      try {
+        hostname = new URL(source.url).hostname
+      } catch {
+        hostname = ''
+      }
+      if (isGooglevideoHost(hostname)) {
+        return fetchBytesRangeAware(
+          (url, init) =>
+            fetch(url, { headers: init.headers }).then((res) => ({
+              ok: res.ok,
+              status: res.status,
+              arrayBuffer: () => res.arrayBuffer(),
+              getHeader: (name) => res.headers.get(name),
+            })),
+          source.url,
+          headers,
+        )
+      }
+      const response = await fetch(source.url, { headers })
       if (!response.ok) {
         throw new Error(`音频读取失败: HTTP ${response.status}`)
       }

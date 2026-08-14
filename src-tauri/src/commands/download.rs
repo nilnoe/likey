@@ -202,20 +202,32 @@ pub async fn download_file(
         .user_agent(BROWSER_UA)
         .build()
         .map_err(|e| e.to_string())?;
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("下载请求失败: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!("下载失败: HTTP {}", response.status().as_u16()));
-    }
-    let content_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-    let ext = infer_extension(content_type.as_deref(), &url);
+    let is_gv = url.contains("googlevideo.com");
+    let response = if is_gv {
+        None
+    } else {
+        let response = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("下载请求失败: {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!("下载失败: HTTP {}", response.status().as_u16()));
+        }
+        Some(response)
+    };
+    let content_type = response.as_ref().and_then(|r| {
+        r.headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+    });
+    // googlevideo 由 yt-dlp 强制选 m4a/AAC；其余按响应推断
+    let ext = if is_gv {
+        "m4a".to_string()
+    } else {
+        infer_extension(content_type.as_deref(), &url)
+    };
     let final_name = if base.to_ascii_lowercase().ends_with(&format!(".{ext}")) {
         base
     } else {
@@ -229,15 +241,21 @@ pub async fn download_file(
         });
     }
 
-    let total = response.content_length().unwrap_or(0);
-    let mut downloaded: u64 = 0;
-    let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| e.to_string())?;
-        std::io::Write::write_all(&mut file, &chunk).map_err(|e| e.to_string())?;
-        downloaded += chunk.len() as u64;
-        let _ = on_progress.send(DownloadProgress { downloaded, total });
+    if is_gv {
+        // googlevideo 拒绝无 Range 整包请求 → 分块小 Range 抓取（浏览器同款策略）
+        download_chunked(&client, &url, &path, &on_progress).await?;
+    } else {
+        let response = response.expect("非 googlevideo 必有响应");
+        let total = response.content_length().unwrap_or(0);
+        let mut downloaded: u64 = 0;
+        let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| e.to_string())?;
+            std::io::Write::write_all(&mut file, &chunk).map_err(|e| e.to_string())?;
+            downloaded += chunk.len() as u64;
+            let _ = on_progress.send(DownloadProgress { downloaded, total });
+        }
     }
 
     // 封面：抓取 → 落盘 covers/ → 嵌入标签
@@ -298,6 +316,71 @@ pub fn delete_download(app: tauri::AppHandle, path: String) -> Result<(), String
     std::fs::remove_file(&target).map_err(|e| e.to_string())
 }
 
+const GV_CHUNK_SIZE: u64 = 512 * 1024;
+
+/// 解析 Content-Range 总长："bytes 0-1023/5152105" → 5152105。
+fn parse_content_range_total(value: Option<&str>) -> Option<u64> {
+    value?.rsplit('/').next()?.parse().ok()
+}
+
+/// 全文件分块区间 [start, end]（含端点）。
+fn chunk_ranges(total: u64, chunk_size: u64) -> Vec<(u64, u64)> {
+    let mut ranges = Vec::new();
+    let mut start = 0u64;
+    while start < total {
+        let end = std::cmp::min(start + chunk_size - 1, total - 1);
+        ranges.push((start, end));
+        start = end + 1;
+    }
+    ranges
+}
+
+/// googlevideo 分块抓取：探测总长 → 逐块有限 Range 请求写入文件。
+async fn download_chunked(
+    client: &reqwest::Client,
+    url: &str,
+    path: &Path,
+    on_progress: &Channel<DownloadProgress>,
+) -> Result<(), String> {
+    let probe = client
+        .get(url)
+        .header(reqwest::header::RANGE, "bytes=0-0")
+        .send()
+        .await
+        .map_err(|e| format!("下载请求失败: {e}"))?;
+    if !probe.status().is_success() {
+        return Err(format!("下载失败: HTTP {}", probe.status().as_u16()));
+    }
+    let total = parse_content_range_total(
+        probe
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok()),
+    )
+    .or_else(|| probe.content_length())
+    .ok_or_else(|| "无法确定文件总长（无 Content-Range）".to_string())?;
+
+    let mut file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    let mut downloaded: u64 = 0;
+    for (start, end) in chunk_ranges(total, GV_CHUNK_SIZE) {
+        let range = format!("bytes={start}-{end}");
+        let response = client
+            .get(url)
+            .header(reqwest::header::RANGE, &range)
+            .send()
+            .await
+            .map_err(|e| format!("分块下载失败: {e}"))?;
+        if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+            return Err(format!("分块下载失败: HTTP {}", response.status().as_u16()));
+        }
+        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+        std::io::Write::write_all(&mut file, &bytes).map_err(|e| e.to_string())?;
+        downloaded += bytes.len() as u64;
+        let _ = on_progress.send(DownloadProgress { downloaded, total });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,6 +418,23 @@ mod tests {
     fn infer_ext_falls_back_to_url_then_mp3() {
         assert_eq!(infer_extension(None, "https://x/song.m4a?sig=1"), "m4a");
         assert_eq!(infer_extension(None, "https://x/stream"), "mp3");
+    }
+
+    #[test]
+    fn chunk_ranges_cover_whole_file() {
+        assert_eq!(chunk_ranges(10, 4), vec![(0, 3), (4, 7), (8, 9)]);
+        assert_eq!(chunk_ranges(3, 4), vec![(0, 2)]);
+        assert_eq!(chunk_ranges(8, 4), vec![(0, 3), (4, 7)]);
+    }
+
+    #[test]
+    fn parse_content_range_extracts_total() {
+        assert_eq!(
+            parse_content_range_total(Some("bytes 0-0/5152105")),
+            Some(5152105)
+        );
+        assert_eq!(parse_content_range_total(Some("garbage")), None);
+        assert_eq!(parse_content_range_total(None), None);
     }
 
     /// 集成测试：往真实 mp3（无标签测试音）写入元数据后可被读回。
