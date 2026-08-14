@@ -56,6 +56,8 @@ pnpm tauri dev     # Tauri 桌面开发
 pnpm gate          # G1+G2+G3 质量门
 pnpm test          # Vitest 单测
 pnpm tauri build   # 发布构建（里程碑节点）
+node scripts/generate-source-probe-html.mjs   # 生成音源运行时探测页（真实源码零漂移）
+swift scripts/webview-source-probe.swift      # 系统 WKWebView 验证音源运行时契约（7/7 项）
 ```
 
 ## 已知技术风险（开发中随时留意）
