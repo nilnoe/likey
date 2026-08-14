@@ -1,6 +1,6 @@
 # Likey
 
-千千静听（TTPlayer）风格的律动音乐播放器。本地音乐库 + 频谱律动可视化 + LRC 歌词 + 皮肤系统。
+千千静听（TTPlayer）风格的律动音乐播放器。本地音乐库 + 频谱律动可视化 + LRC 歌词 + 皮肤系统 + **.js 音源接入**（lx-music 兼容协议）。
 
 - 技术栈：Tauri 2 + React 19 + Vite + TypeScript（strict）
 - 设计文档：[docs/DESIGN.md](docs/DESIGN.md)
@@ -62,3 +62,9 @@ pnpm gate           # G1 静态（oxlint/tsc/prettier）+ G2 测试（Vitest 覆
 - [ ] CmdOrCtrl+Shift+Space 全局快捷键切换播放（macOS 首次需辅助功能授权）
 - [ ] 系统媒体键 / Now Playing 显示曲目并可控制
 - [ ] 发布包（dmg）安装可运行
+
+## S7 .js 音源接入验收清单（G4）
+
+- [ ] 内置示例音源可搜索并播放本地音乐库曲目（需先扫描音乐库）
+- [ ] 导入 lx-music 兼容 .js 音源后可搜索/播放（原生 HTTP 免 CORS）/取歌词
+- [ ] 音源脚本重启后保留；脚本报错不影响播放器其他功能

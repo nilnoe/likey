@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Likey 默认权限：核心 + 目录选择对话框",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "store:default"]
+  "permissions": ["core:default", "dialog:default", "store:default", "http:default"]
 }

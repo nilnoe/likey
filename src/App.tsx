@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { LibraryPanel } from './features/library/LibraryPanel'
 import { LyricsPanel } from './features/lyrics/LyricsPanel'
+import { OnlineSourcePanel } from './features/onlinesource/OnlineSourcePanel'
 import { FormatProbePanel } from './features/player/FormatProbePanel'
 import { PlaylistPanel } from './features/player/PlaylistPanel'
 import { filterAudioFiles } from './features/player/audioFiles'
 import { usePlayerEngine } from './features/player/usePlayerEngine'
 import { SkinSwitcher } from './features/skins/SkinSwitcher'
 import { VisualizerCanvas } from './features/visualizer/VisualizerCanvas'
+import { useOnlineSourceStore } from './state/onlineSourceStore'
 import { useQueueStore } from './state/queueStore'
 import { useSkinStore } from './state/skinStore'
 
@@ -50,6 +52,11 @@ export default function App() {
     root.setProperty('--lyric-font-size', `${activeSkin.lyrics.fontSize}px`)
     root.setProperty('color-scheme', activeSkin.colorScheme)
   }, [activeSkin])
+
+  // 启动时恢复用户音源脚本
+  useEffect(() => {
+    void useOnlineSourceStore.getState().restore()
+  }, [])
 
   const duration = engine.player.getDuration()
   const canToggle = status.kind === 'playing' || status.kind === 'ready'
@@ -183,6 +190,7 @@ export default function App() {
           <div className="status-line">{statusText}</div>
         </section>
         <div className="bottom-panels">
+          <OnlineSourcePanel />
           <LyricsPanel engine={engine} />
           <LibraryPanel />
           <PlaylistPanel playing={status.kind === 'playing'} />

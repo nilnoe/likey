@@ -750,10 +750,29 @@ interface QueueStoreState {
 
 - m4a/aac 支持 + Rust 端 symphonia 解码兜底（彻底摆脱 WebView 格式差异）
 - 粒子宇宙 / 示波器波形 / 放射频谱等更多视觉模式（渲染器接口已预留）
-- 双语歌词（翻译行）展示
 - 波形预渲染 + 拖动 seek 预览
 - 自动更新、在线皮肤市场
 - 歌词自动下载（第三方源，需评估版权）
+
+---
+
+## 19. .js 音源接入（S7，已实现）
+
+**协议**：lx-music 自定义音源兼容 —— 脚本定义全局 `window.source = { search(keyword, page, limit), getMusicUrl(songmid, quality), getLyric(songmid) }`，现有生态音源脚本可直接导入。
+
+**架构**：
+
+```
+用户 .js 脚本 → sandbox iframe（allow-scripts，blob origin，无网络特权）
+   ├─ 脚本内 fetch ──postMessage──▶ 主线程 SourceRuntime ──▶ tauri-plugin-http（reqwest，免 CORS）──▶ 响应 ArrayBuffer 回传（transferable）
+   └─ RPC 调用（search/getMusicUrl/getLyric，30s 超时）──▶ 结果经协议校验（core/onlinesource/protocol.ts）──▶ UI / 播放队列
+```
+
+- 播放：`getMusicUrl` 返回远程 URL → 队列 `TrackSource.url` → `QueueController.readSource` 走插件 HTTP 原生取字节（免 CORS）→ 现有 PlayerCore 解码链与 LRU 缓存全部复用
+- 歌词：`getLyric` 返回 LRC 文本 → `lyricOverrideStore` 注入歌词面板（优先于同名 .lrc 匹配）
+- 内置示例音源（`public/sources/example.js`）：搜索并播放本地音乐库（曲库经 `{ type: 'config' }` 消息注入），离线可验证全链路
+- 用户音源脚本持久化到 `tauri-plugin-store`
+- 安全边界：脚本无 DOM 网络特权（fetch 全部代理）、调用带超时、结果强校验、脚本崩溃不影响宿主
 
 ---
 

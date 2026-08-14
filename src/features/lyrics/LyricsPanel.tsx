@@ -3,6 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { LyricsSync, type TokenProgress } from '../../core/lyrics/LyricsSync'
 import { parseLrc, type LrcDocument } from '../../core/lyrics/lrcParser'
 import { useLibraryStore } from '../../state/libraryStore'
+import { useLyricOverrideStore } from '../../state/lyricOverrideStore'
 import { useQueueStore } from '../../state/queueStore'
 import type { PlayerEngine } from '../player/usePlayerEngine'
 import { loadLyricsOffset, saveLyricsOffset } from '../player/persistence'
@@ -37,6 +38,16 @@ export function LyricsPanel({ engine }: { engine: PlayerEngine }) {
   const queueTracks = useQueueStore((s) => s.tracks)
   const queueIndex = useQueueStore((s) => s.index)
   const libraryTracks = useLibraryStore((s) => s.tracks)
+  const lyricOverride = useLyricOverrideStore((s) => s.text)
+  const lyricOverrideRef = useRef<string | null>(null)
+  lyricOverrideRef.current = lyricOverride
+
+  // 音源歌词覆盖（getLyric 注入）：优先于同名 .lrc 自动匹配
+  useEffect(() => {
+    if (lyricOverride !== null) {
+      loadRaw(lyricOverride)
+    }
+  }, [lyricOverride])
 
   function loadRaw(raw: string): boolean {
     const document = parseLrc(raw)
@@ -90,6 +101,10 @@ export function LyricsPanel({ engine }: { engine: PlayerEngine }) {
         stateRef.current?.sync.setUserOffset(offset)
       }
     })
+    // 音源歌词覆盖优先：有注入歌词时跳过同名 .lrc 自动匹配
+    if (lyricOverrideRef.current !== null) {
+      return
+    }
     const libraryTrack = libraryTracks.find((t) => t.id === track.id)
     if (libraryTrack === undefined) {
       setHint('拖放曲目无文件路径 — 可点击「加载歌词」手动选择 .lrc')

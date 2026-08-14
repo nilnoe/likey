@@ -106,3 +106,23 @@ export async function loadLibraryDir(): Promise<string | null> {
   if (store === null) return null
   return (await store.get<string>('libraryDir')) ?? null
 }
+
+/** 用户音源脚本（{ id, name, code } 列表）。 */
+export interface PersistedSource {
+  readonly id: string
+  readonly name: string
+  readonly code: string
+}
+
+export async function saveOnlineSources(sources: readonly PersistedSource[]): Promise<void> {
+  const store = await getStore()
+  if (store === null) return
+  await store.set('onlineSources', sources)
+  await store.save()
+}
+
+export async function loadOnlineSources(): Promise<readonly PersistedSource[]> {
+  const store = await getStore()
+  if (store === null) return []
+  return (await store.get<readonly PersistedSource[]>('onlineSources')) ?? []
+}
