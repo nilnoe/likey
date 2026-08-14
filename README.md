@@ -84,6 +84,7 @@ swift scripts/webview-source-probe.swift      # 系统 WKWebView 执行运行时
 
 ## S7 .js 音源接入验收清单（G4）
 
+- [ ] 内置 YouTube 音源（yt-dlp）：搜索主流曲目（如周杰伦）并完整播放 m4a/AAC（需 `brew install yt-dlp`）
 - [x] 内置 Audius 音源：搜索真实在线曲目 ✅（用户实机确认）
 - [x] 内置 Audius 音源：完整播放 ✅（用户实机确认）
 - [x] 内置 iTunes 试听源：搜索主流曲目并播放 30s 片段 ✅（用户实机确认）

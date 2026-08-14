@@ -773,10 +773,12 @@ interface QueueStoreState {
 - 播放：`getMusicUrl` 返回远程 URL → 队列 `TrackSource.url` → `QueueController.readSource` 走插件 HTTP 原生取字节（免 CORS）→ 现有 PlayerCore 解码链与 LRU 缓存全部复用
 - 歌词：`getLyric` 返回 LRC 文本 → `lyricOverrideStore` 注入歌词面板（优先于同名 .lrc 匹配）
 - 内置音源（`public/sources/`，运行时经资产协议加载）：
+  - **`youtube`（原生源，不经沙箱运行时）**：Rust 调 **yt-dlp sidecar**（`ytdl_search`/`ytdl_url` 命令）——把 YouTube 适配外包给维护最勤的开源 CLI，全曲库、无账号、零封号风险；取流强制 `bestaudio[ext=m4a]`（WKWebView 不支持 Opus/WebM，AAC 实测 206 audio/mp4）；yt-dlp 缺失时给出友好安装提示；标题启发式拆分「艺术家 - 曲名」（MV/Official/歌词版等标记不拆）
   - `audius.js`：Audius 公开 API（免费开源音乐平台，无需密钥）——真实在线曲目全曲播放；流媒体 CDN 校验 User-Agent，经脚本 headers 透传（reqwest 无浏览器 header 限制）
   - `itunes.js`：iTunes Search API 试听源——主流曲库 30s 片段（平台限制）
   - `example.js`：本地音乐库示例源（离线验证全链路）
-  - 真实可用性验证：curl 端到端（搜索/签名跳转/200 audio/mpeg）+ WKWebView 探测 10/10（含 Audius 真实网络往返）
+  - 真实可用性验证：curl 端到端 + WKWebView 探测 10/10（含 Audius 真实网络往返）；yt-dlp 搜索/取流实测（206 Partial Content）
+  - **免费匿名高质源调研结论（2026-08 实测）**：酷我签名校验、咪咕 PE 加密、YouTube innertube SABR+po_token 挑战——直接逆向维护不可持续，故 YouTube 走 yt-dlp 托管适配
   - **Internet Archive 弃用结论**（三种路径实测 401：无 UA / 浏览器 UA / 匿名 cookie 会话）：下载端点要求登录会话，reqwest 无 cookie 持久化，不适合免密钥直链源 → 由 iTunes 试听源替代（覆盖主流曲库 30s 片段）
   - **HTTP 插件 scope 必须显式配置**（capabilities: `http:default` + `allow: ["https://*", "http://*"]`）：默认权限允许 fetch 操作但拒绝一切源，漏配表现为「搜索无结果/取流失败」——已修复并有插件单测背书（`http://*` 匹配任意主机任意路径）
 - 用户音源脚本持久化到 `tauri-plugin-store`

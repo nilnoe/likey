@@ -84,3 +84,22 @@ export async function deleteDownload(path: string): Promise<void> {
 export async function getDownloadsDir(): Promise<string> {
   return invoke<string>('get_downloads_dir')
 }
+
+/** YouTube 搜索结果音轨（yt-dlp sidecar 映射）。 */
+export interface YtTrack {
+  readonly videoId: string
+  readonly title: string
+  readonly artist: string
+  readonly duration: number
+  readonly thumbnail: string
+}
+
+/** YouTube 搜索（Rust 调 yt-dlp，无账号）。 */
+export async function ytdlSearch(query: string, limit = 20): Promise<YtTrack[]> {
+  return invoke<YtTrack[]>('ytdl_search', { query, limit })
+}
+
+/** YouTube 取流地址（强制 m4a/AAC，WKWebView 不支持 Opus/WebM）。 */
+export async function ytdlUrl(videoId: string): Promise<string> {
+  return invoke<string>('ytdl_url', { videoId })
+}

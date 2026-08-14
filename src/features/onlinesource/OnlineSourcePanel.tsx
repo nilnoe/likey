@@ -6,7 +6,7 @@ import {
   type MusicQuality,
   type SourceSong,
 } from '../../core/onlinesource/protocol'
-import { deleteDownload, downloadFile } from '../library/tauriBridge'
+import { deleteDownload, downloadFile, ytdlSearch, ytdlUrl } from '../library/tauriBridge'
 import { useDownloadsStore } from '../../state/downloadsStore'
 import { useLibraryStore } from '../../state/libraryStore'
 import { useLyricOverrideStore } from '../../state/lyricOverrideStore'
@@ -74,10 +74,16 @@ export function OnlineSourcePanel() {
     return runtimeRef.current
   }
 
-  // 激活音源变化 → 重载脚本
+  // 激活音源变化 → 重载脚本（原生源走 Rust 命令，跳过沙箱运行时）
   useEffect(() => {
     const source = sources.find((s) => s.id === activeId)
     if (source === undefined) return
+    if (source.native === 'youtube') {
+      setStatus('ready')
+      setStatusError(null)
+      setResults([])
+      return
+    }
     const runtime = ensureRuntime()
     let cancelled = false
     void (async () => {
@@ -132,15 +138,30 @@ export function OnlineSourcePanel() {
   }, [libraryTracks, sources, activeId])
 
   async function handleSearch(): Promise<void> {
-    const runtime = runtimeRef.current
-    if (runtime === null || runtime.getStatus() !== 'ready') {
-      setHint('音源未就绪')
-      return
-    }
     setSearching(true)
     setHint(null)
     try {
-      setResults(await runtime.search(keyword, 1, 50))
+      if (activeSource?.native === 'youtube') {
+        const tracks = await ytdlSearch(keyword, 30)
+        setResults(
+          tracks.map((t) => ({
+            songmid: t.videoId,
+            name: t.title,
+            singer: t.artist,
+            album: '',
+            interval: t.duration,
+            img: t.thumbnail,
+            source: 'youtube',
+          })),
+        )
+      } else {
+        const runtime = runtimeRef.current
+        if (runtime === null || runtime.getStatus() !== 'ready') {
+          setHint('音源未就绪')
+          return
+        }
+        setResults(await runtime.search(keyword, 1, 50))
+      }
     } catch (error) {
       setResults([])
       setHint(error instanceof Error ? error.message : String(error))
@@ -150,19 +171,24 @@ export function OnlineSourcePanel() {
   }
 
   async function handlePlay(song: SourceSong): Promise<void> {
-    const runtime = runtimeRef.current
-    if (runtime === null) return
     setBusySong(song.songmid)
     setHint(null)
     try {
-      const url = await runtime.getMusicUrl(song.songmid, quality)
+      let url: string | null
+      if (activeSource?.native === 'youtube') {
+        url = await ytdlUrl(song.songmid)
+      } else {
+        const runtime = runtimeRef.current
+        if (runtime === null) return
+        url = await runtime.getMusicUrl(song.songmid, quality)
+      }
       if (url === null) {
         setHint('音源未返回可播放地址')
         return
       }
       await playTrack({
         id: `os-${activeId}-${song.songmid}-${quality}`,
-        name: `${song.name} - ${song.singer}`,
+        name: song.singer !== '' ? `${song.singer} - ${song.name}` : song.name,
         source: { kind: 'url', url },
       })
     } catch (error) {
@@ -173,6 +199,10 @@ export function OnlineSourcePanel() {
   }
 
   async function handleLyric(song: SourceSong): Promise<void> {
+    if (activeSource?.native === 'youtube') {
+      setHint('该音源暂不提供歌词（可下载后手动加载 .lrc）')
+      return
+    }
     const runtime = runtimeRef.current
     if (runtime === null) return
     setHint(null)
@@ -199,23 +229,29 @@ export function OnlineSourcePanel() {
 
   /** 下载音源曲目到本地（Rust 流式 + 进度），一步到位：封面 + 歌词 + 完整档案。 */
   async function handleDownload(song: SourceSong): Promise<void> {
-    const runtime = runtimeRef.current
-    if (runtime === null || downloadingSong !== null) return
+    if (downloadingSong !== null) return
     setHint(null)
     setDownloadingSong(song.songmid)
     setDownloadProgress(null)
     try {
-      const url = await runtime.getMusicUrl(song.songmid, quality)
+      let url: string | null
+      let lyrics: string | null = null
+      if (activeSource?.native === 'youtube') {
+        url = await ytdlUrl(song.songmid)
+      } else {
+        const runtime = runtimeRef.current
+        if (runtime === null) return
+        url = await runtime.getMusicUrl(song.songmid, quality)
+        // 歌词可选：音源不提供也不阻断下载
+        try {
+          lyrics = await runtime.getLyric(song.songmid)
+        } catch {
+          lyrics = null
+        }
+      }
       if (url === null) {
         setHint('音源未返回可下载地址')
         return
-      }
-      // 歌词可选：音源不提供也不阻断下载
-      let lyrics: string | null = null
-      try {
-        lyrics = await runtime.getLyric(song.songmid)
-      } catch {
-        lyrics = null
       }
       // 命名规范：作者 - 歌名（人读）；元数据写入标签（机器识别），两者互不替代
       const result = await downloadFile(

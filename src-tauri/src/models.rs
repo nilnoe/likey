@@ -51,3 +51,14 @@ pub struct DownloadMeta {
     pub artwork_url: Option<String>,
     pub lyrics: Option<String>,
 }
+
+/// YouTube 搜索结果音轨（yt-dlp sidecar 映射）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YtTrack {
+    pub video_id: String,
+    pub title: String,
+    pub artist: String,
+    pub duration: u64,
+    pub thumbnail: String,
+}

@@ -6,9 +6,18 @@ export interface OnlineSource extends PersistedSource {
   readonly builtin: boolean
   /** 内置源的脚本资产路径（运行时 fetch；用户源直接内嵌 code）。 */
   readonly assetPath?: string
+  /** 原生源（不经沙箱运行时，走 Rust 命令）；目前仅 YouTube(yt-dlp)。 */
+  readonly native?: 'youtube'
 }
 
 export const BUILTIN_SOURCES: readonly OnlineSource[] = [
+  {
+    id: 'youtube',
+    name: '内置 · YouTube（yt-dlp，全曲库 256k）',
+    code: '',
+    builtin: true,
+    native: 'youtube',
+  },
   {
     id: 'audius',
     name: '内置 · Audius（免费音乐平台）',
