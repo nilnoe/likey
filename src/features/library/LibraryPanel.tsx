@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { LibraryTrack } from '../../core/library/types'
 import { toPlaylistTrack } from '../../core/library/convert'
-import { useLibraryStore } from '../../state/libraryStore'
+import { restoreLibraryDir, useLibraryStore } from '../../state/libraryStore'
 import { useQueueStore } from '../../state/queueStore'
 import { pickDirectory, readCoverBytes } from './tauriBridge'
 
@@ -61,6 +61,20 @@ export function LibraryPanel() {
   const playLibraryTrack = useQueueStore((s) => s.playLibraryTrack)
   const listRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
+  const autoRestoredRef = useRef(false)
+
+  // 启动恢复：有持久化的音乐库目录且尚未扫描 → 自动重扫
+  useEffect(() => {
+    if (autoRestoredRef.current) return
+    autoRestoredRef.current = true
+    const state = useLibraryStore.getState()
+    if (state.tracks.length > 0 || state.scanState.kind !== 'idle') return
+    void restoreLibraryDir().then((dir) => {
+      if (dir !== null) {
+        void useLibraryStore.getState().scan(dir)
+      }
+    })
+  }, [])
 
   const virtualizer = useVirtualizer({
     count: tracks.length,

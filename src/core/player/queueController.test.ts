@@ -181,6 +181,39 @@ describe('QueueController', () => {
     expect(onEnded).toHaveBeenCalledTimes(1)
   })
 
+  it('restore rebuilds state from persisted snapshot without playing', async () => {
+    const player = new FakePlayer()
+    const { controller } = makeController(player, 42)
+    controller.restore({
+      tracks: makeLibraryTracks(['a.mp3', 'b.mp3', 'c.mp3']),
+      index: 1,
+      repeat: 'all',
+      shuffle: true,
+    })
+    expect(controller.getSnapshot()).toMatchObject({
+      index: 1,
+      repeat: 'all',
+      shuffle: true,
+    })
+    expect(controller.getSnapshot().tracks).toHaveLength(3)
+    expect(player.loaded).toHaveLength(0) // 恢复不自动播放
+    expect(player.playCount).toBe(0)
+  })
+
+  it('restore clamps index into range', () => {
+    const player = new FakePlayer()
+    const { controller } = makeController(player)
+    controller.restore({
+      tracks: makeLibraryTracks(['a.mp3']),
+      index: 99,
+      repeat: 'off',
+      shuffle: false,
+    })
+    expect(controller.getSnapshot().index).toBe(0)
+    controller.restore({ tracks: [], index: 2, repeat: 'off', shuffle: false })
+    expect(controller.getSnapshot().index).toBe(-1)
+  })
+
   it('manual next/prev wrap unconditionally', async () => {
     const player = new FakePlayer()
     const { controller } = makeController(player)

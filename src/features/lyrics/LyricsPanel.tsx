@@ -5,6 +5,7 @@ import { parseLrc, type LrcDocument } from '../../core/lyrics/lrcParser'
 import { useLibraryStore } from '../../state/libraryStore'
 import { useQueueStore } from '../../state/queueStore'
 import type { PlayerEngine } from '../player/usePlayerEngine'
+import { loadLyricsOffset, saveLyricsOffset } from '../player/persistence'
 
 interface LyricsState {
   readonly document: LrcDocument
@@ -29,6 +30,7 @@ export function LyricsPanel({ engine }: { engine: PlayerEngine }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const stateRef = useRef<LyricsState | null>(null)
   const userOffsetRef = useRef(0)
+  const currentTrackIdRef = useRef<string | null>(null)
   const engineRef = useRef(engine)
   engineRef.current = engine
 
@@ -72,12 +74,22 @@ export function LyricsPanel({ engine }: { engine: PlayerEngine }) {
   useEffect(() => {
     const track = queueTracks[queueIndex]
     if (track === undefined) {
+      currentTrackIdRef.current = null
       stateRef.current = null
       setState(null)
       setActiveIndex(null)
       setProgress(null)
       return
     }
+    currentTrackIdRef.current = track.id
+    // 恢复该曲目持久化的歌词偏移
+    void loadLyricsOffset(track.id).then((offset) => {
+      if (offset !== 0 && currentTrackIdRef.current === track.id) {
+        userOffsetRef.current = offset
+        setUserOffset(offset)
+        stateRef.current?.sync.setUserOffset(offset)
+      }
+    })
     const libraryTrack = libraryTracks.find((t) => t.id === track.id)
     if (libraryTrack === undefined) {
       setHint('拖放曲目无文件路径 — 可点击「加载歌词」手动选择 .lrc')
@@ -122,6 +134,10 @@ export function LyricsPanel({ engine }: { engine: PlayerEngine }) {
     userOffsetRef.current = next
     setUserOffset(next)
     stateRef.current?.sync.setUserOffset(next)
+    const trackId = currentTrackIdRef.current
+    if (trackId !== null) {
+      void saveLyricsOffset(trackId, next)
+    }
   }
 
   const document = state?.document ?? null

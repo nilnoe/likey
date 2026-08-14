@@ -4,6 +4,7 @@ import { SpectrumExtractor } from '../../core/analysis/SpectrumExtractor'
 import { PlayerCore, type PlayerStatus } from '../../core/player/PlayerCore'
 import { WebAudioBackend } from '../../core/player/WebAudioBackend'
 import { useQueueStore } from '../../state/queueStore'
+import { loadQueue } from './persistence'
 
 /** 播放引擎：一次会话内稳定的 core 实例集合。 */
 export interface PlayerEngine {
@@ -54,6 +55,12 @@ export function usePlayerEngine(): {
 
   useEffect(() => {
     useQueueStore.getState().bind(engine.player)
+    // 会话恢复：持久化队列快照（不自动播放，等待用户手势）
+    void loadQueue().then((persisted) => {
+      if (persisted !== null) {
+        useQueueStore.getState().restore(persisted)
+      }
+    })
     const unsubscribe = engine.player.onStatusChange(setStatus)
     const interval = window.setInterval(() => {
       setPosition(engine.player.getPosition())

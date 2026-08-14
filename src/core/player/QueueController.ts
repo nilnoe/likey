@@ -133,6 +133,25 @@ export class QueueController {
     }
   }
 
+  /** 会话恢复（持久化快照 → 控制器状态；不自动播放，等待用户手势）。 */
+  restore(snapshot: {
+    readonly tracks: readonly PlaylistTrack[]
+    readonly index: number
+    readonly repeat: RepeatMode
+    readonly shuffle: boolean
+  }): void {
+    this.tracks = [...snapshot.tracks]
+    this.index =
+      this.tracks.length === 0 ? -1 : Math.min(Math.max(-1, snapshot.index), this.tracks.length - 1)
+    this.repeat = snapshot.repeat
+    this.shuffleEnabled = snapshot.shuffle
+    this.refreshOrder()
+    this.emitter.emit('indexChange', this.index)
+    this.emitter.emit('repeatChange', this.repeat)
+    this.emitter.emit('shuffleChange', this.shuffleEnabled)
+    this.emitter.emit('queueChange', undefined)
+  }
+
   async playIndex(i: number): Promise<void> {
     const track = this.tracks[i]
     if (track === undefined) return

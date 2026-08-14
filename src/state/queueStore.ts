@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { QueueController, type QueuePlayer } from '../core/player/QueueController'
 import type { PlaylistTrack, RepeatMode } from '../core/player/Queue'
+import { saveQueue, type RestoredQueue } from '../features/player/persistence'
 
 /**
  * 播放队列 UI 状态（zustand）。
@@ -13,6 +14,8 @@ interface QueueStoreState {
   readonly repeat: RepeatMode
   readonly shuffle: boolean
   bind(player: QueuePlayer): void
+  /** 会话恢复（持久化快照；不自动播放）。 */
+  restore(snapshot: RestoredQueue): void
   addFiles(files: readonly File[], playFirst?: boolean): Promise<void>
   addTracks(tracks: readonly PlaylistTrack[], playFirst?: boolean): Promise<void>
   playIndex(index: number): Promise<void>
@@ -27,6 +30,17 @@ interface QueueStoreState {
 }
 
 let controller: QueueController | null = null
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 队列变化 → 防抖持久化（500ms 合并连续变更）。 */
+function scheduleSave(): void {
+  if (saveTimer !== null) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    if (controller !== null) {
+      void saveQueue(controller.getSnapshot())
+    }
+  }, 500)
+}
 
 export const useQueueStore = create<QueueStoreState>((set) => ({
   tracks: [],
@@ -40,10 +54,24 @@ export const useQueueStore = create<QueueStoreState>((set) => ({
     controller.onQueueChange(() => {
       const snapshot = controller?.getSnapshot()
       set({ tracks: [...(snapshot?.tracks ?? [])] })
+      scheduleSave()
     })
-    controller.onIndexChange((index) => set({ index }))
-    controller.onRepeatChange((repeat) => set({ repeat }))
-    controller.onShuffleChange((shuffle) => set({ shuffle }))
+    controller.onIndexChange((index) => {
+      set({ index })
+      scheduleSave()
+    })
+    controller.onRepeatChange((repeat) => {
+      set({ repeat })
+      scheduleSave()
+    })
+    controller.onShuffleChange((shuffle) => {
+      set({ shuffle })
+      scheduleSave()
+    })
+  },
+
+  restore: (snapshot) => {
+    controller?.restore(snapshot)
   },
 
   addFiles: async (files, playFirst = false) => {
