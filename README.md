@@ -26,7 +26,7 @@ pnpm gate           # G1 静态（oxlint/tsc/prettier）+ G2 测试（Vitest 覆
 - [ ] `pnpm tauri dev` 窗口正常打开
 - [ ] 打开本地 mp3 / flac / wav 可播放，seek / 音量 / 暂停正常
 - [ ] 频谱柱随音乐律动，鼓点触发脉冲
-- [ ] 格式探测面板：mp3 / wav 应为 ✅；FLAC 结果决定 WASM 兜底是否进 MVP（macOS WKWebView 风险点）
+- [x] 格式探测：**已用系统 WKWebView 实测**（`scripts/webview-decode-probe.swift`）——mp3/flac/wav 原生解码全部 ✅，无需 WASM 兜底；应用内探测面板仍可复核
 
 ## S1 播放内核验收清单（G4）
 

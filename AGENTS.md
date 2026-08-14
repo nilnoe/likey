@@ -60,5 +60,5 @@ pnpm tauri build   # 发布构建（里程碑节点）
 
 ## 已知技术风险（开发中随时留意）
 
-- macOS WKWebView 对 flac 的 `decodeAudioData` 支持版本相关（`docs/DESIGN.md` §14）——S0 Spike 必须实测。
+- ~~macOS WKWebView 对 flac 的 `decodeAudioData` 支持版本相关~~ → ✅ 已实测通过（macOS 26.5，`scripts/webview-decode-probe.swift`），WASM 兜底退出 MVP。
 - 一切计时以 `AudioContext.currentTime` 为唯一时钟，禁止 `setTimeout`/`Date.now()` 驱动播放相关逻辑。

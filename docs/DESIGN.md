@@ -272,7 +272,7 @@ export interface DecodeResult {
 export type DecodePipeline = (bytes: ArrayBuffer, format: AudioFormat) => Promise<DecodeResult>
 ```
 
-降级顺序：`AudioContext.decodeAudioData` 原生解码 → 失败则 WASM 解码器（`@wasm-audio-decoders/flac` 等，二期引入）→ 仍失败报 `decode-unsupported`。**Spike 阶段（S0）必须先验证 macOS WKWebView 对 flac 的原生解码能力**，这决定 WASM 兜底是否进入 MVP 范围。
+降级顺序：`AudioContext.decodeAudioData` 原生解码 → 失败则 WASM 解码器（`@wasm-audio-decoders/flac` 等，二期引入）→ 仍失败报 `decode-unsupported`。**Spike 已实测：macOS 26.5 WKWebView 三格式原生解码全部通过（`scripts/webview-decode-probe.swift`），WASM 兜底退出 MVP 范围**。
 
 ### 4.5 播放队列（QueueController，S1 引入）
 
@@ -695,12 +695,12 @@ interface QueueStoreState {
 
 ## 14. 格式兼容与降级策略
 
-| 格式    | Windows(WebView2) | macOS(WKWebView)                   | 降级                                                  |
-| ------- | ----------------- | ---------------------------------- | ----------------------------------------------------- |
-| mp3     | ✅ 原生           | ✅ 原生                            | —                                                     |
-| wav     | ✅ 原生           | ✅ 原生                            | —                                                     |
-| flac    | ✅ 原生           | ⚠️ 版本相关，**S0 Spike 必须实测** | WASM 解码器（`@wasm-audio-decoders/flac`），+2MB 体积 |
-| m4a/aac | ✅ 原生           | ✅ 原生                            | 二期再开（未列入 MVP 格式白名单）                     |
+| 格式    | Windows(WebView2) | macOS(WKWebView)                                                         | 降级                              |
+| ------- | ----------------- | ------------------------------------------------------------------------ | --------------------------------- |
+| mp3     | ✅ 原生           | ✅ **实测通过**（`scripts/webview-decode-probe.swift`，1.045s 解码成功） | —                                 |
+| wav     | ✅ 原生           | ✅ **实测通过**                                                          | —                                 |
+| flac    | ✅ 原生           | ✅ **实测通过**（风险解除，WASM 兜底退出 MVP 范围）                      | 无需（二期仍可备 WASM 兜底）      |
+| m4a/aac | ✅ 原生           | ✅ 原生                                                                  | 二期再开（未列入 MVP 格式白名单） |
 
 解码失败统一走 §4.4 降级链，最终兜底为 `decode-unsupported` 错误态 + UI 提示（提示音轨不可播，不崩溃不卡死）。
 
@@ -708,14 +708,14 @@ interface QueueStoreState {
 
 ## 15. 风险清单
 
-| 风险                          | 影响               | 缓解                                                       |
-| ----------------------------- | ------------------ | ---------------------------------------------------------- |
-| WKWebView 不支持 flac 解码    | macOS 上 flac 全灭 | S0 Spike 实测；提前备好 WASM 兜底方案                      |
-| 全量解码内存峰值              | 低配机卡顿         | LRU(2) + 解码前检查 `navigator.deviceMemory` 动态降容量    |
-| macOS 目录扫描权限            | 无法读库           | dialog 授权流程 + 错误提示指引                             |
-| 全局快捷键需要辅助功能权限    | 热键不可用         | 系统媒体键降级路径（MediaSession）                         |
-| `AudioContext` 被系统策略暂停 | 后台无声           | 监听 `statechange`，恢复时自动重建 Source                  |
-| 多时间标签 LRC 兼容乱         | 歌词错乱           | 解析器容错：非法行跳过并计数，UI 提示「歌词解析失败 N 行」 |
+| 风险                           | 影响                   | 缓解                                                                                               |
+| ------------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| ~~WKWebView 不支持 flac 解码~~ | ~~macOS 上 flac 全灭~~ | ✅ **已解除**：macOS 26.5 WKWebView 实测三格式解码全部通过（`scripts/webview-decode-probe.swift`） |
+| 全量解码内存峰值               | 低配机卡顿             | LRU(2) + 解码前检查 `navigator.deviceMemory` 动态降容量                                            |
+| macOS 目录扫描权限             | 无法读库               | dialog 授权流程 + 错误提示指引                                                                     |
+| 全局快捷键需要辅助功能权限     | 热键不可用             | 系统媒体键降级路径（MediaSession）                                                                 |
+| `AudioContext` 被系统策略暂停  | 后台无声               | 监听 `statechange`，恢复时自动重建 Source                                                          |
+| 多时间标签 LRC 兼容乱          | 歌词错乱               | 解析器容错：非法行跳过并计数，UI 提示「歌词解析失败 N 行」                                         |
 
 ---
 

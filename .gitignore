@@ -29,3 +29,8 @@ dist-ssr
 .xdg-state/
 .cargo-home/
 coverage
+
+# Swift 探测脚本产物
+.swift-probe
+.swift-cache/
+.swift-tmp/
