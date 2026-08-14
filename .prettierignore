@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+src-tauri/target
+src-tauri/gen
+.pnpm-store
+.xdg-cache
+.xdg-state
+.cargo-home
+.devrc
+.git

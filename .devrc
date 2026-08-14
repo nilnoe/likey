@@ -1,0 +1,7 @@
+# 将包管理器/工具链缓存重定向到仓库内目录，适配 workspace 沙箱权限。
+# 用法（每条新 shell 执行一次）：source .devrc && <pnpm|cargo 命令>
+LIKEY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export XDG_CACHE_HOME="$LIKEY_ROOT/.xdg-cache"
+export XDG_STATE_HOME="$LIKEY_ROOT/.xdg-state"
+export CARGO_HOME="$LIKEY_ROOT/.cargo-home"
+mkdir -p "$XDG_CACHE_HOME" "$XDG_STATE_HOME" "$CARGO_HOME" 2>/dev/null || true

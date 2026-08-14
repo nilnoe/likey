@@ -1,0 +1,145 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+  gap: 12px;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--accent);
+}
+
+.app-subtitle {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.visualizer-panel {
+  flex: 1;
+  min-height: 200px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.visualizer-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.transport {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transport-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transport-row input[type='range'] {
+  flex: 1;
+}
+
+.time-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.status-line {
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 16px;
+}
+
+.probe-panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.probe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.probe-header h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.probe-list {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.probe-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.probe-ok {
+  color: #4ade80;
+}
+
+.probe-fail {
+  color: #f87171;
+}
+
+.probe-wait {
+  color: var(--muted);
+}
+
+.probe-error {
+  color: #f87171;
+  font-size: 11px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.probe-hint {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 8px 0 0;
+}
+
+.hidden-input {
+  display: none;
+}
