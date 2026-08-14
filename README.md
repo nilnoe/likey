@@ -21,6 +21,13 @@ pnpm dev            # 纯 Web 调试（浏览器）
 pnpm gate           # G1 静态（oxlint/tsc/prettier）+ G2 测试（Vitest 覆盖率）+ G3 构建
 ```
 
+## 音源运行时探测（真机级验证）
+
+```bash
+node scripts/generate-source-probe-html.mjs   # 从真实源码生成探测页
+swift scripts/webview-source-probe.swift      # 系统 WKWebView 执行运行时契约（7/7 项）
+```
+
 ## S0 Spike 验收清单（G4）
 
 - [ ] `pnpm tauri dev` 窗口正常打开
