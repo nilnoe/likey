@@ -7,7 +7,7 @@ import {
   type SourceRuntimeMessage,
   type SourceSong,
 } from '../../core/onlinesource/protocol'
-import { SANDBOX_BOOTSTRAP_PRE, SANDBOX_BOOTSTRAP_POST } from './bootstrap'
+import { SANDBOX_BOOTSTRAP_PRE, SANDBOX_BOOTSTRAP_POST, escapeScriptCode } from './bootstrap'
 
 type FetchMessage = Extract<SourceRuntimeMessage, { readonly type: 'fetch' }>
 
@@ -92,14 +92,20 @@ export class SourceRuntime {
     this.setStatus('loading')
     try {
       this.pluginFetch = await this.loadPluginFetch()
-      const blob = new Blob([SANDBOX_BOOTSTRAP_PRE, code, SANDBOX_BOOTSTRAP_POST], {
-        type: 'text/javascript',
-      })
-      const url = URL.createObjectURL(blob)
+      // sandbox="allow-scripts"（不透明源）下 blob URL 不执行脚本（真实 WebKit 实测），
+      // 必须用 srcdoc 内联；用户代码中的 </script> 需转义防止逃逸
+      const escapedCode = escapeScriptCode(code)
+      const srcdoc =
+        '<!doctype html><html><head></head><body><script>' +
+        SANDBOX_BOOTSTRAP_PRE +
+        escapedCode +
+        SANDBOX_BOOTSTRAP_POST +
+        // eslint-disable-next-line no-useless-escape -- 防御性转义：防止 </script> 字面量进入任何内联脚本场景
+        '<\/script></body></html>'
       const iframe = document.createElement('iframe')
       iframe.sandbox.add('allow-scripts')
       iframe.style.display = 'none'
-      iframe.src = url
+      iframe.srcdoc = srcdoc
       document.body.appendChild(iframe)
       this.iframe = iframe
       window.addEventListener('message', this.handleMessage)
@@ -120,7 +126,6 @@ export class SourceRuntime {
           },
         }
       })
-      URL.revokeObjectURL(url)
       this.setStatus('ready')
     } catch (error: unknown) {
       this.setStatus('error', error instanceof Error ? error.message : String(error))

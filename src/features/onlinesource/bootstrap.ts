@@ -3,6 +3,11 @@
  * 分段：PRE 在用户脚本前（fetch 代理 + RPC 监听），POST 在用户脚本后（ready 上报）。
  * 用户脚本协议：定义全局 window.source = { search, getMusicUrl, getLyric }。
  */
+
+/** 转义用户代码中的 </script>，防止从 srcdoc 内联脚本逃逸。 */
+export function escapeScriptCode(code: string): string {
+  return code.replace(/<\/script/gi, '<\\/script')
+}
 export const SANDBOX_BOOTSTRAP_PRE = `
 ;(function () {
   var nativeFetch = window.fetch.bind(window)

@@ -34,3 +34,5 @@ coverage
 .swift-probe
 .swift-cache/
 .swift-tmp/
+
+.probe/
