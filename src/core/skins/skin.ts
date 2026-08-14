@@ -127,7 +127,7 @@ export function parseSkin(json: string): SkinParseResult {
   if ('glow' in spectrumRaw && typeof spectrumRaw['glow'] !== 'boolean') {
     return fail('spectrumStyle.glow 必须是布尔值')
   }
-  // mode 为可选字段：缺省走默认值（liquid），提供则必须是 bars/liquid/chunky/green/bands
+  // mode 为可选字段：缺省走默认值（liquid），提供则必须是 bars/liquid/chunky/green/bands/classic
   const modeRaw = readString(spectrumRaw, 'mode')
   if (
     modeRaw !== null &&
@@ -135,11 +135,14 @@ export function parseSkin(json: string): SkinParseResult {
     modeRaw !== 'liquid' &&
     modeRaw !== 'chunky' &&
     modeRaw !== 'green' &&
-    modeRaw !== 'bands'
+    modeRaw !== 'bands' &&
+    modeRaw !== 'classic'
   ) {
-    return fail('spectrumStyle.mode 必须是 "bars"、"liquid"、"chunky"、"green" 或 "bands"')
+    return fail(
+      'spectrumStyle.mode 必须是 "bars"、"liquid"、"chunky"、"green"、"bands" 或 "classic"',
+    )
   }
-  const mode: 'bars' | 'liquid' | 'chunky' | 'green' | 'bands' =
+  const mode: 'bars' | 'liquid' | 'chunky' | 'green' | 'bands' | 'classic' =
     modeRaw === null ? 'liquid' : modeRaw
 
   const lyricsRaw = data['lyrics']

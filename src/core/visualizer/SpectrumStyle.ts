@@ -12,9 +12,10 @@ export interface SpectrumStyle {
   readonly glow: boolean
   /**
    * 视觉形态：bars = 频谱柱，liquid = 液体剪影，chunky = 加宽胶囊柱，
-   * green = 深绿电平表（单排纯色），bands = 横向频谱带（千千静听原版）
+   * green = 深绿电平表（单排纯色），bands = 横向频谱带（千千静听原版），
+   * classic = 经典原版（正弦构图，Q1/Q3 留空）
    */
-  readonly mode: 'bars' | 'liquid' | 'chunky' | 'green' | 'bands'
+  readonly mode: 'bars' | 'liquid' | 'chunky' | 'green' | 'bands' | 'classic'
 }
 
 export const DEFAULT_SPECTRUM_STYLE: SpectrumStyle = {

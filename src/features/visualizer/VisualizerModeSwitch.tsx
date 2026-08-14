@@ -6,6 +6,7 @@ const OPTIONS: ReadonlyArray<{ value: VisualizerMode; label: string }> = [
   { value: 'chunky', label: '加宽柱' },
   { value: 'green', label: '深绿宽柱' },
   { value: 'bars', label: '频谱柱' },
+  { value: 'classic', label: '经典原版' },
 ]
 
 /** 律动形态切换器：液体剪影 ↔ 经典频谱柱，随时对比。 */

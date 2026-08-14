@@ -22,6 +22,11 @@ const SURFACE_RIM_BOTTOM = 'rgba(255, 255, 255, 0.22)'
 const SURFACE_LINE_WIDTH = 1.5
 /** 深绿电平表模式：纯净深绿纯色填充。 */
 const GREEN_BAR = '#166534'
+/**
+ * 律动整体幅度系数：柱高/液面统一缩放到 90%，
+ * 即使节拍脉冲顶到 1.05 也不会超出面板边缘（比例与律动逻辑不变）。
+ */
+const AMPLITUDE_SCALE = 0.9
 
 /**
  * 千千静听风频谱柱渲染器（Canvas 2D）。
@@ -123,6 +128,8 @@ export class SpectrumBarRenderer {
       this.drawGreen(width, height)
     } else if (this.style.mode === 'bands') {
       this.drawBands(width, height)
+    } else if (this.style.mode === 'classic') {
+      this.drawClassic(width, height)
     } else {
       this.drawBars(width, height)
     }
@@ -183,7 +190,7 @@ export class SpectrumBarRenderer {
     if (this.style.peakHold) {
       for (let i = 0; i < count; i++) {
         const peak = Math.max(this.peaks[i * 2] ?? 0, this.peaks[i * 2 + 1] ?? 0)
-        const peakY = peak * height * pulseScale
+        const peakY = peak * height * AMPLITUDE_SCALE * pulseScale
         ctx.fillStyle = PEAK_COLOR
         ctx.fillRect(slot * i, height - peakY - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT)
       }
@@ -209,6 +216,49 @@ export class SpectrumBarRenderer {
       const w = Math.max(0.5, value * width * pulseScale)
       const y = height - (i + 1) * stripHeight + gap / 2
       ctx.fillRect(0, y, w, h)
+    }
+  }
+
+  /**
+   * 经典原版模式（正弦构图）：只填 Q2（左上）与 Q4（右下）两象限，Q1/Q3 留空——
+   * 低频在左右外缘、高频在中线相会，整体呈正弦函数形状。强制忽略 mirror。
+   */
+  private drawClassic(width: number, height: number): void {
+    const ctx = this.ctx
+    if (ctx === null) return
+    const count = this.values.length
+    const slot = width / (count * 2)
+    const barWidth = Math.max(1, slot - this.style.gap)
+    const pulseScale = 1 + 0.05 * this.pulse
+    const baseY = height / 2
+    const halfHeight = height / 2
+    const primary = this.ensureGradient(height)
+    ctx.fillStyle = primary
+    for (let i = 0; i < count; i++) {
+      const barHeight = this.barHeightOf(this.values[i] ?? 0, halfHeight, pulseScale)
+      // Q2（左上）：低频在最左缘，向上
+      this.drawBar(slot * i, baseY - barHeight, barWidth, barHeight, Math.min(barWidth / 2, 3))
+      // Q4（右下）：低频在最右缘，向下
+      this.drawBar(
+        slot * (count * 2 - i - 1),
+        baseY,
+        barWidth,
+        barHeight,
+        Math.min(barWidth / 2, 3),
+      )
+    }
+    if (this.style.peakHold) {
+      for (let i = 0; i < count; i++) {
+        const peakY = (this.peaks[i] ?? 0) * halfHeight * AMPLITUDE_SCALE * pulseScale
+        ctx.fillStyle = PEAK_COLOR
+        ctx.fillRect(slot * i, baseY - peakY, barWidth, PEAK_LINE_HEIGHT) // Q2
+        ctx.fillRect(
+          slot * (count * 2 - i - 1),
+          baseY + peakY - PEAK_LINE_HEIGHT,
+          barWidth,
+          PEAK_LINE_HEIGHT,
+        ) // Q4
+      }
     }
   }
 
@@ -250,7 +300,7 @@ export class SpectrumBarRenderer {
 
     if (this.style.peakHold) {
       for (let i = 0; i < count; i++) {
-        const peakY = peakAt(i) * halfHeight * pulseScale
+        const peakY = peakAt(i) * halfHeight * AMPLITUDE_SCALE * pulseScale
         if (mirror) {
           ctx.fillStyle = PEAK_COLOR
           ctx.fillRect(slot * (count - 1 - i), baseY - peakY, barWidth, PEAK_LINE_HEIGHT) // Q2
@@ -370,9 +420,9 @@ export class SpectrumBarRenderer {
     ctx.stroke()
   }
 
-  /** 单根柱/单段液面的高度（平滑后 × 脉冲，下限 0.5px）。 */
+  /** 单根柱/单段液面的高度（平滑后 × 脉冲 × 幅度系数，下限 0.5px）。 */
   private barHeightOf(value: number, halfHeight: number, pulseScale: number): number {
-    return Math.max(0.5, value * halfHeight * pulseScale)
+    return Math.max(0.5, value * halfHeight * AMPLITUDE_SCALE * pulseScale)
   }
 
   /** 背景氛围光晕：中心径向渐变，色温/透明度由 computeGlow 逐帧驱动。 */

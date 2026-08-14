@@ -147,6 +147,11 @@ function makeFrame(
   }
 }
 
+/** 模拟 values 经由 frame.bars（Float32Array）的 float32 舍入。 */
+function f32(v: number): number {
+  return new Float32Array([v])[0] ?? v
+}
+
 describe('SpectrumBarRenderer', () => {
   it('mounts and renders mirrored rounded bars + peak lines', () => {
     const { ctx, calls } = makeFakeCtx()
@@ -181,14 +186,16 @@ describe('SpectrumBarRenderer', () => {
     renderer.render(makeFrame([0.9, 0.1, 0.1, 0.1]), 0)
     const bars = calls.filter((c) => c.startsWith('roundRect'))
     // i=0 的四个象限：Q2/Q3 x=3×slot=112.5（中线左侧），Q1/Q4 x=4×slot=150（中线右侧）
+    // AMPLITUDE_SCALE=0.9：h = max(0.5, v×75×0.9×1)，与实现同算式避免浮点误差
+    const yTop = (v: number): string => (75 - Math.max(0.5, f32(v) * 75 * 0.9 * 1)).toFixed(1)
     expect(bars.slice(0, 4)).toEqual([
-      'roundRect(112.5,7.5,3.0)', // Q2 左上
-      'roundRect(150.0,7.5,3.0)', // Q1 右上
+      `roundRect(112.5,${yTop(0.9)},3.0)`, // Q2 左上
+      `roundRect(150.0,${yTop(0.9)},3.0)`, // Q1 右上
       'roundRect(150.0,75.0,3.0)', // Q4 右下
       'roundRect(112.5,75.0,3.0)', // Q3 左下
     ])
     // i=3 高频柱（最矮）落回外缘：Q2 x=0（面板最左）
-    expect(bars[12]).toBe('roundRect(0.0,67.5,3.0)')
+    expect(bars[12]).toBe(`roundRect(0.0,${yTop(0.1)},3.0)`)
   })
 
   it('mirror uses a mirror-fading gradient for the bottom half', () => {
@@ -290,10 +297,14 @@ describe('SpectrumBarRenderer', () => {
     renderer.render(makeFrame([0.9, 0.1]), 0)
     // slot = 300/4 = 75, r = 37.5；弧链顺序：顶面填充(4) → 顶面高光(4) → 底面填充(4) → 底面高光(4)
     const arcs = calls.filter((c) => c.startsWith('arc'))
-    expect(arcs[1]).toBe('arc(112.5,45.0,37.5)') // 顶面左半低频：圆心贴近中心线
-    expect(arcs[2]).toBe('arc(187.5,45.0,37.5)') // 顶面右半低频：与左半在中心相会
-    expect(arcs[3]).toBe('arc(262.5,105.0,37.5)') // 高频弧落回右外缘（圆心更低=更矮）
-    expect(arcs[9]).toBe('arc(112.5,105.0,37.5)') // 底面低频弧（朝下鼓）
+    // AMPLITUDE_SCALE=0.9：h = max(0.5, v×75×0.9×1)；顶面圆心 cy = 75 - h + 37.5，底面 cy = 75 + h - 37.5
+    const hOf = (v: number): number => Math.max(0.5, f32(v) * 75 * 0.9 * 1)
+    const cyTop = (v: number): string => (75 - hOf(v) + 37.5).toFixed(1)
+    const cyBottom = (v: number): string => (75 + hOf(v) - 37.5).toFixed(1)
+    expect(arcs[1]).toBe(`arc(112.5,${cyTop(0.9)},37.5)`) // 顶面左半低频：圆心贴近中心线
+    expect(arcs[2]).toBe(`arc(187.5,${cyTop(0.9)},37.5)`) // 顶面右半低频：与左半在中心相会
+    expect(arcs[3]).toBe(`arc(262.5,${cyTop(0.1)},37.5)`) // 高频弧落回右外缘（圆心更低=更矮）
+    expect(arcs[9]).toBe(`arc(112.5,${cyBottom(0.9)},37.5)`) // 底面低频弧（朝下鼓）
   })
 
   it('liquid mode works in non-mirror layout', () => {
@@ -317,9 +328,10 @@ describe('SpectrumBarRenderer', () => {
     expect(calls.filter((c) => c.startsWith('fillRect'))).toHaveLength(8)
     const bars = calls.filter((c) => c.startsWith('roundRect'))
     // slot = 300/4 = 75, barWidth = 75 - 9 = 66, radius = 33（胶囊全圆角）
-    expect(bars[0]).toBe('roundRect(75.0,37.5,33.0)') // i=0 合并柱 (max(0.5,0.25)=0.5) 贴中线
-    expect(bars[1]).toBe('roundRect(150.0,37.5,33.0)') // Q1
-    expect(bars[4]).toBe('roundRect(0.0,18.8,33.0)') // i=1 合并柱 (max(0.75,0)=0.75) 回外缘
+    const yTop = (v: number): string => (75 - Math.max(0.5, f32(v) * 75 * 0.9 * 1)).toFixed(1)
+    expect(bars[0]).toBe(`roundRect(75.0,${yTop(0.5)},33.0)`) // i=0 合并柱 (max(0.5,0.25)=0.5) 贴中线
+    expect(bars[1]).toBe(`roundRect(150.0,${yTop(0.5)},33.0)`) // Q1
+    expect(bars[4]).toBe(`roundRect(0.0,${yTop(0.75)},33.0)`) // i=1 合并柱 (max(0.75,0)=0.75) 回外缘
   })
 
   it('green mode draws single-row pure rectangles in solid dark green', () => {
@@ -353,5 +365,26 @@ describe('SpectrumBarRenderer', () => {
     expect(rects[3]).toBe('fillRect(0.00,0.75,0.50,36.00)') // 顶部静音带保底 0.5px
     expect(calls).not.toContain('roundRect')
     expect(calls).not.toContain('closePath')
+  })
+
+  it('classic mode fills only Q2/Q4 with the sine layout (Q1/Q3 empty)', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({
+      barCount: 4,
+      mode: 'classic',
+      rounded: true,
+      gap: 0,
+    })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.9, 0.1, 0.1, 0.1]), 0)
+    const bars = calls.filter((c) => c.startsWith('roundRect'))
+    // 仅两象限：4 柱 × 2 象限 = 8 根（无 Q1/Q3 的四象限放大）
+    expect(bars).toHaveLength(8)
+    expect(calls.filter((c) => c.startsWith('fillRect'))).toHaveLength(8) // 峰值线 × 2 象限
+    // slot = 300/8 = 37.5；正弦构图：低频在外缘、高频在中线
+    const yTop = (v: number): string => (75 - Math.max(0.5, f32(v) * 75 * 0.9 * 1)).toFixed(1)
+    expect(bars[0]).toBe(`roundRect(0.0,${yTop(0.9)},3.0)`) // Q2 低频柱在最左缘向上
+    expect(bars[1]).toBe('roundRect(262.5,75.0,3.0)') // Q4 低频柱在最右缘向下
+    expect(bars[7]).toBe('roundRect(150.0,75.0,3.0)') // Q4 高频柱在中线
   })
 })
