@@ -11,18 +11,12 @@ const FFT_SIZE = 2048
 const BIN_HZ = SAMPLE_RATE / FFT_SIZE // ≈21.53 Hz/bin
 const BIN_COUNT = FFT_SIZE / 2
 
-function makeFakeAnalyser(
-  data: Uint8Array,
-  timeData: Uint8Array = new Uint8Array(FFT_SIZE).fill(128),
-): AnalyserLike {
+function makeFakeAnalyser(data: Uint8Array): AnalyserLike {
   return {
     fftSize: FFT_SIZE,
     frequencyBinCount: data.length,
     getByteFrequencyData(array: Uint8Array): void {
       array.set(data)
-    },
-    getByteTimeDomainData(array: Uint8Array): void {
-      array.set(timeData)
     },
   }
 }
@@ -117,21 +111,6 @@ describe('SpectrumExtractor', () => {
       expect(bar).toBe(1)
     }
     expect(frame.lowEnergy).toBe(1)
-  })
-
-  it('captures time-domain waveform samples', () => {
-    const raw = new Uint8Array(BIN_COUNT)
-    const time = new Uint8Array(FFT_SIZE).fill(200)
-    const extractor = new SpectrumExtractor(makeFakeAnalyser(raw, time), {
-      sampleRate: SAMPLE_RATE,
-      minFreq: 20,
-      maxFreq: 16000,
-      barCount: 8,
-    })
-    const frame = extractor.nextFrame()
-    expect(frame.waveform).toHaveLength(FFT_SIZE)
-    expect(frame.waveform[0]).toBe(200)
-    expect(frame.waveform[FFT_SIZE - 1]).toBe(200)
   })
 
   it('setBarCount rebuilds bars and buckets', () => {

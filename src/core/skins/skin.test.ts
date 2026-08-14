@@ -38,22 +38,20 @@ describe('parseSkin', () => {
       expect(result.skin.id).toBe('test')
       expect(result.skin.spectrumStyle.barCount).toBe(48)
       expect(result.skin.colors.spectrum).toEqual(['#00ff00', '#ff00ff'])
-      // 缺省时 glow/waveform 走默认值 true
+      // 缺省时 glow 走默认值 true
       expect(result.skin.spectrumStyle.glow).toBe(true)
-      expect(result.skin.spectrumStyle.waveform).toBe(true)
     }
   })
 
-  it('accepts explicit glow/waveform toggles', () => {
+  it('accepts explicit glow toggle', () => {
     const skin = {
       ...VALID_SKIN,
-      spectrumStyle: { ...VALID_SKIN.spectrumStyle, glow: false, waveform: false },
+      spectrumStyle: { ...VALID_SKIN.spectrumStyle, glow: false },
     }
     const result = parseSkin(JSON.stringify(skin))
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.skin.spectrumStyle.glow).toBe(false)
-      expect(result.skin.spectrumStyle.waveform).toBe(false)
     }
   })
 

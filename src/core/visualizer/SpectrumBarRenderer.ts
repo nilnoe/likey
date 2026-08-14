@@ -15,15 +15,6 @@ const PEAK_COLOR = 'rgba(255, 255, 255, 0.75)'
 /** Q1/Q3 倒影象限的透明度：同主渐变淡化为水面倒影。 */
 const FADE_ALPHA = 0.45
 const FADED_PEAK_COLOR = 'rgba(255, 255, 255, 0.35)'
-/** 时域波形线：宽低透明「辉光」描边 + 细高透明主线。 */
-const WAVEFORM_GLOW_COLOR = 'rgba(255, 255, 255, 0.12)'
-const WAVEFORM_GLOW_WIDTH = 5
-const WAVEFORM_CORE_COLOR = 'rgba(255, 255, 255, 0.45)'
-const WAVEFORM_CORE_WIDTH = 1.5
-/** 波形线单帧最多采样点数（时域 fftSize 2048 → 抽稀到 512）。 */
-const WAVEFORM_MAX_POINTS = 512
-/** 波形线振幅占半高的比例。 */
-const WAVEFORM_AMPLITUDE = 0.7
 
 /**
  * 千千静听风频谱柱渲染器（Canvas 2D）。
@@ -42,7 +33,6 @@ export class SpectrumBarRenderer {
   private glowIntensity = 0
   private glowRgb: Rgb = [0, 0, 0]
   private glowAlpha = 0
-  private waveform: Uint8Array = new Uint8Array(0)
 
   constructor(style: Partial<SpectrumStyle> = {}) {
     this.style = { ...DEFAULT_SPECTRUM_STYLE, ...style }
@@ -107,7 +97,6 @@ export class SpectrumBarRenderer {
     this.glowIntensity = glow.state.intensity
     this.glowRgb = glow.rgb
     this.glowAlpha = glow.alpha
-    this.waveform = frame.waveform
     this.draw()
   }
 
@@ -135,13 +124,14 @@ export class SpectrumBarRenderer {
       const value = this.values[i] ?? 0
       const barHeight = Math.max(0.5, value * halfHeight * pulseScale)
       if (mirror) {
-        // 四象限补全：Q2/Q4 原渐变，Q1/Q3 同色淡化（水面倒影）
+        // 四象限低频居中：Q1/Q2（上）与 Q3/Q4（下）平移互换后，
+        // 低音柱在中心相会形成山峰，高频向两侧展开；Q2/Q4 主渐变，Q1/Q3 淡化倒影
         ctx.fillStyle = primary
-        this.drawBar(slot * i, baseY - barHeight, barWidth, barHeight) // Q2（左上）
-        this.drawBar(slot * (total - i - 1), baseY, barWidth, barHeight) // Q4（右下）
+        this.drawBar(slot * (count - 1 - i), baseY - barHeight, barWidth, barHeight) // Q2（左上）
+        this.drawBar(slot * (count + i), baseY, barWidth, barHeight) // Q4（右下）
         ctx.fillStyle = faded
-        this.drawBar(slot * (total - i - 1), baseY - barHeight, barWidth, barHeight) // Q1（右上）
-        this.drawBar(slot * i, baseY, barWidth, barHeight) // Q3（左下）
+        this.drawBar(slot * (count + i), baseY - barHeight, barWidth, barHeight) // Q1（右上）
+        this.drawBar(slot * (count - 1 - i), baseY, barWidth, barHeight) // Q3（左下）
       } else {
         ctx.fillStyle = primary
         this.drawBar(slot * i, height - barHeight, barWidth, barHeight)
@@ -153,25 +143,26 @@ export class SpectrumBarRenderer {
         const peakHeight = (this.peaks[i] ?? 0) * halfHeight * pulseScale
         if (mirror) {
           ctx.fillStyle = PEAK_COLOR
-          ctx.fillRect(slot * i, baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q2
+          ctx.fillRect(slot * (count - 1 - i), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q2
           ctx.fillRect(
-            slot * (total - i - 1),
+            slot * (count + i),
             baseY + peakHeight - PEAK_LINE_HEIGHT,
             barWidth,
             PEAK_LINE_HEIGHT,
           ) // Q4
           ctx.fillStyle = FADED_PEAK_COLOR
-          ctx.fillRect(slot * (total - i - 1), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q1
-          ctx.fillRect(slot * i, baseY + peakHeight - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT) // Q3
+          ctx.fillRect(slot * (count + i), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q1
+          ctx.fillRect(
+            slot * (count - 1 - i),
+            baseY + peakHeight - PEAK_LINE_HEIGHT,
+            barWidth,
+            PEAK_LINE_HEIGHT,
+          ) // Q3
         } else {
           ctx.fillStyle = PEAK_COLOR
           ctx.fillRect(slot * i, height - peakHeight - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT)
         }
       }
-    }
-
-    if (this.style.waveform) {
-      this.drawWaveform(width, height)
     }
   }
 
@@ -190,33 +181,6 @@ export class SpectrumBarRenderer {
     ctx.beginPath()
     ctx.rect(0, 0, width, height)
     ctx.fill()
-  }
-
-  /** 时域波形线：居中横贯的示波器细线，两次描边做出辉光感。 */
-  private drawWaveform(width: number, height: number): void {
-    const ctx = this.ctx
-    if (ctx === null) return
-    const samples = this.waveform
-    if (samples.length < 2) return
-    const stride = Math.max(1, Math.ceil(samples.length / WAVEFORM_MAX_POINTS))
-    const count = Math.ceil(samples.length / stride)
-    const amp = (height / 2) * WAVEFORM_AMPLITUDE
-    const baseY = height / 2
-    ctx.beginPath()
-    let j = 0
-    for (let i = 0; i < samples.length; i += stride, j++) {
-      const v = ((samples[i] ?? 128) - 128) / 128
-      const x = (j / (count - 1)) * width
-      const y = baseY + v * amp
-      if (j === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    }
-    ctx.strokeStyle = WAVEFORM_GLOW_COLOR
-    ctx.lineWidth = WAVEFORM_GLOW_WIDTH
-    ctx.stroke()
-    ctx.strokeStyle = WAVEFORM_CORE_COLOR
-    ctx.lineWidth = WAVEFORM_CORE_WIDTH
-    ctx.stroke()
   }
 
   private drawBar(x: number, y: number, w: number, h: number): void {
