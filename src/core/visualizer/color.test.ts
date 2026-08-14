@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hexToRgb, hexWithAlpha } from './color'
+import { hexToRgb, hexWithAlpha, mixWithAlpha } from './color'
 
 describe('hexToRgb', () => {
   it('parses 6-digit hex with or without #', () => {
@@ -27,5 +27,24 @@ describe('hexWithAlpha', () => {
 
   it('returns null for invalid hex', () => {
     expect(hexWithAlpha('bad', 0.5)).toBeNull()
+  })
+})
+
+describe('mixWithAlpha', () => {
+  it('blends linearly and applies alpha', () => {
+    expect(mixWithAlpha('#000000', '#ffffff', 0.5, 0.3)).toBe('rgba(128, 128, 128, 0.3)')
+    expect(mixWithAlpha('#22d3ee', '#a855f7', 0.5, 0.45)).toBe('rgba(101, 148, 243, 0.45)')
+    expect(mixWithAlpha('#22d3ee', '#a855f7', 0, 1)).toBe('rgba(34, 211, 238, 1)')
+    expect(mixWithAlpha('#22d3ee', '#a855f7', 1, 1)).toBe('rgba(168, 85, 247, 1)')
+  })
+
+  it('clamps t and alpha', () => {
+    expect(mixWithAlpha('#000000', '#ffffff', -1, 0.5)).toBe('rgba(0, 0, 0, 0.5)')
+    expect(mixWithAlpha('#000000', '#ffffff', 2, 1.5)).toBe('rgba(255, 255, 255, 1)')
+  })
+
+  it('returns null for invalid hex', () => {
+    expect(mixWithAlpha('bad', '#ffffff', 0.5, 1)).toBeNull()
+    expect(mixWithAlpha('#ffffff', 'bad', 0.5, 1)).toBeNull()
   })
 })

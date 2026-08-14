@@ -8,12 +8,13 @@ import {
   type SpectrumStyle,
 } from './SpectrumStyle'
 import { computeGlow } from './ambient'
-import { hexWithAlpha, type Rgb } from './color'
+import { hexWithAlpha, mixWithAlpha, type Rgb } from './color'
 
 const PEAK_LINE_HEIGHT = 2
 const PEAK_COLOR = 'rgba(255, 255, 255, 0.75)'
-/** Q1/Q3 倒影象限的透明度：同主渐变淡化为水面倒影。 */
+/** 倒影（下半象限）：中心线处透明度，向下渐隐至 FADE_BOTTOM_ALPHA。 */
 const FADE_ALPHA = 0.45
+const FADE_BOTTOM_ALPHA = 0.06
 const FADED_PEAK_COLOR = 'rgba(255, 255, 255, 0.35)'
 
 /**
@@ -124,13 +125,13 @@ export class SpectrumBarRenderer {
       const value = this.values[i] ?? 0
       const barHeight = Math.max(0.5, value * halfHeight * pulseScale)
       if (mirror) {
-        // 四象限低频居中：Q1/Q2（上）与 Q3/Q4（下）平移互换后，
-        // 低音柱在中心相会形成山峰，高频向两侧展开；Q2/Q4 主渐变，Q1/Q3 淡化倒影
+        // 四象限低频居中 + 完全倒影：上半（Q1/Q2）主渐变，
+        // 下半（Q3/Q4）同色倒影，自中心线向下渐隐（无硬切割）
         ctx.fillStyle = primary
         this.drawBar(slot * (count - 1 - i), baseY - barHeight, barWidth, barHeight) // Q2（左上）
-        this.drawBar(slot * (count + i), baseY, barWidth, barHeight) // Q4（右下）
-        ctx.fillStyle = faded
         this.drawBar(slot * (count + i), baseY - barHeight, barWidth, barHeight) // Q1（右上）
+        ctx.fillStyle = faded
+        this.drawBar(slot * (count + i), baseY, barWidth, barHeight) // Q4（右下）
         this.drawBar(slot * (count - 1 - i), baseY, barWidth, barHeight) // Q3（左下）
       } else {
         ctx.fillStyle = primary
@@ -144,14 +145,14 @@ export class SpectrumBarRenderer {
         if (mirror) {
           ctx.fillStyle = PEAK_COLOR
           ctx.fillRect(slot * (count - 1 - i), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q2
+          ctx.fillRect(slot * (count + i), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q1
+          ctx.fillStyle = FADED_PEAK_COLOR
           ctx.fillRect(
             slot * (count + i),
             baseY + peakHeight - PEAK_LINE_HEIGHT,
             barWidth,
             PEAK_LINE_HEIGHT,
           ) // Q4
-          ctx.fillStyle = FADED_PEAK_COLOR
-          ctx.fillRect(slot * (count + i), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q1
           ctx.fillRect(
             slot * (count - 1 - i),
             baseY + peakHeight - PEAK_LINE_HEIGHT,
@@ -206,15 +207,19 @@ export class SpectrumBarRenderer {
     return this.gradient ?? this.style.gradient[0] ?? '#22d3ee'
   }
 
-  /** 淡化渐变（Q1/Q3 倒影象限用）：与主渐变同色，仅降低透明度。 */
+  /** 倒影渐变（下半象限用）：中心线为两色 50% 混合 @45%，向底部渐隐至 6% 并镜像回底色。 */
   private ensureFadedGradient(height: number): string | CanvasGradient {
     if (this.fadedGradient === null && this.ctx !== null) {
       const [c1, c2] = this.style.gradient
-      const faded1 = hexWithAlpha(c1 ?? '#22d3ee', FADE_ALPHA) ?? c1 ?? '#22d3ee'
-      const faded2 = hexWithAlpha(c2 ?? '#a855f7', FADE_ALPHA) ?? c2 ?? '#a855f7'
-      const gradient = this.ctx.createLinearGradient(0, 0, 0, height)
-      gradient.addColorStop(0, faded1)
-      gradient.addColorStop(1, faded2)
+      const bottom = c1 ?? '#22d3ee'
+      const top = c2 ?? '#a855f7'
+      // 中心线处主渐变正显示 50% 混合色 → 倒影从这里起步，颜色向下镜像回 c1（水面倒映）
+      const mid =
+        mixWithAlpha(bottom, top, 0.5, FADE_ALPHA) ?? hexWithAlpha(bottom, FADE_ALPHA) ?? bottom
+      const edge = hexWithAlpha(bottom, FADE_BOTTOM_ALPHA) ?? bottom
+      const gradient = this.ctx.createLinearGradient(0, height / 2, 0, height)
+      gradient.addColorStop(0, mid)
+      gradient.addColorStop(1, edge)
       this.fadedGradient = gradient
     }
     return this.fadedGradient ?? this.style.gradient[0] ?? '#22d3ee'

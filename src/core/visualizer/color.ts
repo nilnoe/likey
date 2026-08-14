@@ -16,3 +16,16 @@ export function hexWithAlpha(hex: string, alpha: number): string | null {
   const a = Math.min(1, Math.max(0, alpha))
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})`
 }
+
+/** 按比例混合两色（t=0 全 a，t=1 全 b）并附加 alpha，输出 rgba() 字符串；非法输入返回 null。 */
+export function mixWithAlpha(a: string, b: string, t: number, alpha: number): string | null {
+  const rgbA = hexToRgb(a)
+  const rgbB = hexToRgb(b)
+  if (rgbA === null || rgbB === null) return null
+  const k = Math.min(1, Math.max(0, t))
+  const al = Math.min(1, Math.max(0, alpha))
+  const r = Math.round((rgbA[0] ?? 0) + ((rgbB[0] ?? 0) - (rgbA[0] ?? 0)) * k)
+  const g = Math.round((rgbA[1] ?? 0) + ((rgbB[1] ?? 0) - (rgbA[1] ?? 0)) * k)
+  const bl = Math.round((rgbA[2] ?? 0) + ((rgbB[2] ?? 0) - (rgbA[2] ?? 0)) * k)
+  return `rgba(${r}, ${g}, ${bl}, ${al})`
+}

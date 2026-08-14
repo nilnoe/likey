@@ -142,25 +142,25 @@ describe('SpectrumBarRenderer', () => {
     // i=0 的四个象限：Q2/Q3 x=3×slot=112.5（中线左侧），Q1/Q4 x=4×slot=150（中线右侧）
     expect(bars.slice(0, 4)).toEqual([
       'roundRect(112.5,7.5)', // Q2 左上
-      'roundRect(150.0,75.0)', // Q4 右下
       'roundRect(150.0,7.5)', // Q1 右上
+      'roundRect(150.0,75.0)', // Q4 右下
       'roundRect(112.5,75.0)', // Q3 左下
     ])
     // i=3 高频柱（最矮）落回外缘：Q2 x=0（面板最左）
     expect(bars[12]).toBe('roundRect(0.0,67.5)')
   })
 
-  it('mirror fills Q1/Q3 with the same gradient at reduced alpha', () => {
+  it('mirror uses a mirror-fading gradient for the bottom half', () => {
     const { ctx, calls } = makeFakeCtx()
     const renderer = new SpectrumBarRenderer({ barCount: 2, mirror: true })
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.render(makeFrame([0.5, 0.25]), 0)
-    // 前两个 stop 是主渐变原色，后两个是同色 0.45 透明度的倒影渐变
+    // 主渐变两 stop 原色；倒影渐变：中心线 50% 混合色 @45% → 底部回到底色 @6%
     expect(calls.filter((c) => c.startsWith('addColorStop'))).toEqual([
       'addColorStop(0,#22d3ee)',
       'addColorStop(1,#a855f7)',
-      'addColorStop(0,rgba(34, 211, 238, 0.45))',
-      'addColorStop(1,rgba(168, 85, 247, 0.45))',
+      'addColorStop(0,rgba(101, 148, 243, 0.45))',
+      'addColorStop(1,rgba(34, 211, 238, 0.06))',
     ])
   })
 
