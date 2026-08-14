@@ -1,6 +1,6 @@
 [package]
 name = "likey"
-version = "0.1.0"
+version = "0.2.0"
 description = "Likey — 千千静听风格律动音乐播放器"
 authors = ["mikesjb"]
 license = "MIT"
