@@ -3,6 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { LyricsSync, type TokenProgress } from '../../core/lyrics/LyricsSync'
 import { parseLrc, type LrcDocument } from '../../core/lyrics/lrcParser'
 import { useLibraryStore } from '../../state/libraryStore'
+import { useDownloadsStore } from '../../state/downloadsStore'
 import { useLyricOverrideStore } from '../../state/lyricOverrideStore'
 import { useQueueStore } from '../../state/queueStore'
 import type { PlayerEngine } from '../player/usePlayerEngine'
@@ -108,6 +109,14 @@ export function LyricsPanel({ engine }: { engine: PlayerEngine }) {
     const libraryTrack = libraryTracks.find((t) => t.id === track.id)
     if (libraryTrack === undefined) {
       setHint('拖放曲目无文件路径 — 可点击「加载歌词」手动选择 .lrc')
+      return
+    }
+    // 下载档案歌词优先：曲库曲目命中下载记录且档案含歌词 → 直接用（旁路档案）
+    const downloadRecord = useDownloadsStore
+      .getState()
+      .items.find((item) => item.path === libraryTrack.path)
+    if (downloadRecord?.lyrics !== undefined && downloadRecord.lyrics.trim() !== '') {
+      loadRaw(downloadRecord.lyrics)
       return
     }
     const dot = libraryTrack.path.lastIndexOf('.')

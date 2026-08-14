@@ -79,17 +79,40 @@ describe('音乐库目录持久化', () => {
 })
 
 describe('下载列表持久化', () => {
-  it('round-trips downloaded items', async () => {
+  it('round-trips downloaded items including archive fields', async () => {
     await saveDownloads([
-      { id: 'audius:vZJJz', name: 'workit - chromonicci.', path: '/x/y.mp3', downloadedAt: 42 },
+      {
+        id: 'audius:vZJJz',
+        name: 'workit - chromonicci.',
+        path: '/x/y.mp3',
+        downloadedAt: 42,
+        sourceId: 'audius',
+        songmid: 'vZJJz',
+        quality: '320k',
+        album: 'Electronic',
+        duration: 190,
+        artworkPath: '/x/covers/y.jpg',
+        lyrics: '[00:01.00]歌词',
+      },
     ])
     const restored = await loadDownloads()
-    expect(restored).toEqual([
-      { id: 'audius:vZJJz', name: 'workit - chromonicci.', path: '/x/y.mp3', downloadedAt: 42 },
-    ])
-    expect(await loadDownloads()).toHaveLength(1)
-    await saveDownloads([])
-    expect(await loadDownloads()).toEqual([])
+    expect(restored).toHaveLength(1)
+    expect(restored[0]).toMatchObject({
+      id: 'audius:vZJJz',
+      sourceId: 'audius',
+      songmid: 'vZJJz',
+      quality: '320k',
+      artworkPath: '/x/covers/y.jpg',
+      lyrics: '[00:01.00]歌词',
+    })
+    // 旧记录（无新字段）也能读回
+    await saveDownloads([{ id: 'old', name: 'old', path: '/x/old.mp3', downloadedAt: 1 }])
+    expect((await loadDownloads())[0]).toEqual({
+      id: 'old',
+      name: 'old',
+      path: '/x/old.mp3',
+      downloadedAt: 1,
+    })
   })
 
   it('returns empty list when nothing persisted', async () => {

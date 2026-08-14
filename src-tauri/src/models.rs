@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// 音轨元数据（与前端 core/library/types.ts 的 TrackMeta 契约对齐）。
 #[derive(Debug, Clone, Serialize)]
@@ -31,4 +31,23 @@ pub struct ScanProgress {
 pub struct DownloadProgress {
     pub downloaded: u64,
     pub total: u64,
+}
+
+/// 下载结果（音频路径 + 可选封面路径）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadResult {
+    pub path: String,
+    pub artwork_path: Option<String>,
+}
+
+/// 下载元数据（标签写入与封面抓取用；字段均可选）。
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadMeta {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub artwork_url: Option<String>,
+    pub lyrics: Option<String>,
 }

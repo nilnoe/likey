@@ -127,12 +127,19 @@ export async function loadOnlineSources(): Promise<readonly PersistedSource[]> {
   return (await store.get<readonly PersistedSource[]>('onlineSources')) ?? []
 }
 
-/** 已下载曲目（id/name/path/时间戳）。 */
+/** 已下载曲目档案（含溯源与完整元数据；新字段可选，兼容旧记录）。 */
 export interface PersistedDownload {
   readonly id: string
   readonly name: string
   readonly path: string
   readonly downloadedAt: number
+  readonly sourceId?: string
+  readonly songmid?: string
+  readonly quality?: string
+  readonly album?: string
+  readonly duration?: number
+  readonly artworkPath?: string
+  readonly lyrics?: string
 }
 
 export async function saveDownloads(items: readonly PersistedDownload[]): Promise<void> {

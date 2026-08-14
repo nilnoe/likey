@@ -786,6 +786,9 @@ interface QueueStoreState {
 
 - Rust `download_file`：reqwest(rustls) 流式下载到 **`~/Music/Mymusic`**（用户可见目录），进度经 Channel 推送，文件已存在即复用；旧应用数据目录文件自动搬迁
 - 命名规范：**`作者 - 歌名`**（作者缺失仅歌名）；Rust 侧安全清洗（保留中文/字母数字/空格，路径字符转义）+ 扩展名推断（Content-Type → URL 路径 → mp3 兜底）；`delete_download` 校验路径必须位于下载目录内
+- **双轨元数据（方案 C）**：文件内写标准标签（标题/艺术家/专辑/**封面嵌入**/**歌词帧**，lofty 写入，集成测试验证）+ 旁路档案存完整溯源（sourceId/songmid/quality/album/duration/artworkPath/lyrics，plugin-store 持久化，旧记录字段可选自然兼容）
+- 封面同时落盘 `covers/{名}.jpg`（旁路档案引用 + 下载列表缩略图）；歌词在下载时一并抓取（音源不提供不阻断）
+- 曲库融合：扫描到的下载文件命中档案时，歌词面板优先使用档案歌词（旁路优先于同名 .lrc）
 - 下载列表持久化（plugin-store）；离线播放走资产协议（`convertFileSrc`，scope 含 `$HOME/**`），与在线播放共用解码链
 - 旧记录路径迁移：前端 restore 时经 `fixLegacyDownloadPath` 修复到新目录
 

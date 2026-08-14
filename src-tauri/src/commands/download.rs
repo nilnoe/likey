@@ -107,14 +107,22 @@ pub fn infer_extension(content_type: Option<&str>, url: &str) -> String {
     "mp3".to_string()
 }
 
-/// 把曲目元数据写入文件标签（标题/艺术家/专辑）：
+/// 把曲目元数据写入文件标签（标题/艺术家/专辑/封面/歌词）：
 /// 文件名只管人读，机器识别靠内嵌标签，任何播放器扫描都准确。
 /// 不支持的容器（如 ADTS 裸流）静默跳过。
-fn write_metadata_tags(path: &Path, title: &str, artist: &str, album: &str) {
+fn write_metadata_tags(
+    path: &Path,
+    title: &str,
+    artist: &str,
+    album: &str,
+    artwork: Option<&[u8]>,
+    artwork_mime: Option<&str>,
+    lyrics: Option<&str>,
+) {
     let Ok(mut tagged) = lofty::read_from_path(path) else {
         return;
     };
-    let set_texts = |tag: &mut Tag| {
+    let set_fields = |tag: &mut Tag| {
         tag.insert_text(ItemKey::TrackTitle, title.to_string());
         if !artist.is_empty() {
             tag.insert_text(ItemKey::TrackArtist, artist.to_string());
@@ -122,32 +130,72 @@ fn write_metadata_tags(path: &Path, title: &str, artist: &str, album: &str) {
         if !album.is_empty() {
             tag.insert_text(ItemKey::AlbumTitle, album.to_string());
         }
+        if let Some(bytes) = artwork {
+            let mime = match artwork_mime.unwrap_or("") {
+                "image/png" => lofty::picture::MimeType::Png,
+                "image/gif" => lofty::picture::MimeType::Gif,
+                "image/bmp" => lofty::picture::MimeType::Bmp,
+                other => lofty::picture::MimeType::Unknown(other.to_string()),
+            };
+            let picture = lofty::picture::Picture::new_unchecked(
+                lofty::picture::PictureType::CoverFront,
+                Some(mime),
+                None,
+                bytes.to_vec(),
+            );
+            tag.push_picture(picture);
+        }
+        if let Some(text) = lyrics {
+            tag.insert_text(ItemKey::Lyrics, text.to_string());
+        }
     };
     if tagged.primary_tag().is_some() {
         if let Some(tag) = tagged.primary_tag_mut() {
-            set_texts(tag);
+            set_fields(tag);
         }
     } else {
         let mut tag = Tag::new(tagged.primary_tag_type());
-        set_texts(&mut tag);
+        set_fields(&mut tag);
         tagged.insert_tag(tag);
     }
     let _ = tagged.save_to_path(path, WriteOptions::default());
 }
 
-/// 下载音源曲目到 ~/Music/Mymusic，返回绝对路径。
+/// 抓取封面图片（小文件，10MB 上限）；失败静默返回 None（不阻断下载）。
+async fn fetch_artwork(client: &reqwest::Client, url: &str) -> Option<(Vec<u8>, String)> {
+    let response = client.get(url).send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    if response.content_length().unwrap_or(0) > 10 * 1024 * 1024 {
+        return None;
+    }
+    let mime = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .to_string();
+    let bytes = response.bytes().await.ok()?;
+    if bytes.len() > 10 * 1024 * 1024 {
+        return None;
+    }
+    Some((bytes.to_vec(), mime))
+}
+
+/// 下载音源曲目到 ~/Music/Mymusic，返回音频路径与封面路径。
 /// 已存在同内容（按最终文件名）则直接返回；流式写入并经 Channel 推送进度；
-/// 可选元数据（title/artist/album）在下载完成后写入文件标签。
+/// 元数据（title/artist/album/artwork_url/lyrics）在下载完成后写入文件标签，
+/// 封面同时落盘 covers/ 供旁路档案引用。
 #[tauri::command]
 pub async fn download_file(
     app: tauri::AppHandle,
     url: String,
     file_name: String,
     on_progress: Channel<DownloadProgress>,
-    title: Option<String>,
-    artist: Option<String>,
-    album: Option<String>,
-) -> Result<String, String> {
+    meta: Option<crate::models::DownloadMeta>,
+) -> Result<crate::models::DownloadResult, String> {
+    let meta = meta.unwrap_or_default();
     let dir = downloads_dir(&app)?;
     let base = sanitize_file_name(&file_name);
     let client = reqwest::Client::builder()
@@ -175,7 +223,10 @@ pub async fn download_file(
     };
     let path = dir.join(&final_name);
     if path.is_file() {
-        return Ok(path.to_string_lossy().to_string());
+        return Ok(crate::models::DownloadResult {
+            path: path.to_string_lossy().to_string(),
+            artwork_path: None,
+        });
     }
 
     let total = response.content_length().unwrap_or(0);
@@ -188,15 +239,52 @@ pub async fn download_file(
         downloaded += chunk.len() as u64;
         let _ = on_progress.send(DownloadProgress { downloaded, total });
     }
-    if let Some(t) = title.filter(|t| !t.trim().is_empty()) {
+
+    // 封面：抓取 → 落盘 covers/ → 嵌入标签
+    let artwork = match meta.artwork_url.as_deref().filter(|u| !u.is_empty()) {
+        Some(art_url) => fetch_artwork(&client, art_url).await,
+        None => None,
+    };
+    let artwork_path = if let Some((bytes, _mime)) = artwork.as_ref() {
+        let covers = dir.join("covers");
+        if std::fs::create_dir_all(&covers).is_ok() {
+            let stem = final_name
+                .rsplit_once('.')
+                .map(|(stem, _)| stem)
+                .unwrap_or(&final_name)
+                .to_string();
+            let cover_path = covers.join(format!("{stem}.jpg"));
+            if std::fs::write(&cover_path, bytes).is_ok() {
+                Some(cover_path.to_string_lossy().to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(t) = meta.title.as_deref().filter(|t| !t.trim().is_empty()) {
+        let (bytes, mime) = artwork
+            .as_ref()
+            .map(|(bytes, mime)| (bytes.as_slice(), mime.as_str()))
+            .unwrap_or((&[][..], ""));
         write_metadata_tags(
             &path,
             t.trim(),
-            artist.as_deref().unwrap_or(""),
-            album.as_deref().unwrap_or(""),
+            meta.artist.as_deref().unwrap_or(""),
+            meta.album.as_deref().unwrap_or(""),
+            (!bytes.is_empty()).then_some(bytes),
+            (!mime.is_empty()).then_some(mime),
+            meta.lyrics.as_deref(),
         );
     }
-    Ok(path.to_string_lossy().to_string())
+    Ok(crate::models::DownloadResult {
+        path: path.to_string_lossy().to_string(),
+        artwork_path,
+    })
 }
 
 /// 删除下载文件（路径必须在 downloads 目录内，防越界删除）。
@@ -259,7 +347,15 @@ mod tests {
         std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
         let tmp = tmp_dir.join(format!("likey-tag-test-{}.mp3", std::process::id()));
         std::fs::copy(&fixture, &tmp).expect("copy fixture");
-        write_metadata_tags(&tmp, "晴天", "周杰伦", "叶惠美");
+        write_metadata_tags(
+            &tmp,
+            "晴天",
+            "周杰伦",
+            "叶惠美",
+            Some(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some("image/jpeg"),
+            Some("[00:01.00]歌词"),
+        );
 
         let tagged = lofty::read_from_path(&tmp).expect("read back");
         let tag = tagged.primary_tag().expect("id3v2 tag written");
@@ -273,6 +369,8 @@ mod tests {
             tag.album().map(|s| s.to_string()).as_deref(),
             Some("叶惠美")
         );
+        assert_eq!(tag.pictures().len(), 1);
+        assert_eq!(tag.get_string(&ItemKey::Lyrics), Some("[00:01.00]歌词"));
         let _ = std::fs::remove_file(&tmp);
     }
 }

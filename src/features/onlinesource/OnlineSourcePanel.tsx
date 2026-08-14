@@ -197,7 +197,7 @@ export function OnlineSourcePanel() {
     setHint(error ?? `已导入音源「${name}」`)
   }
 
-  /** 下载音源曲目到本地（Rust 流式 + 进度），入库下载列表。 */
+  /** 下载音源曲目到本地（Rust 流式 + 进度），一步到位：封面 + 歌词 + 完整档案。 */
   async function handleDownload(song: SourceSong): Promise<void> {
     const runtime = runtimeRef.current
     if (runtime === null || downloadingSong !== null) return
@@ -210,18 +210,38 @@ export function OnlineSourcePanel() {
         setHint('音源未返回可下载地址')
         return
       }
+      // 歌词可选：音源不提供也不阻断下载
+      let lyrics: string | null = null
+      try {
+        lyrics = await runtime.getLyric(song.songmid)
+      } catch {
+        lyrics = null
+      }
       // 命名规范：作者 - 歌名（人读）；元数据写入标签（机器识别），两者互不替代
-      const path = await downloadFile(
+      const result = await downloadFile(
         url,
         buildDownloadFileName(song.singer, song.name),
         (done, total) => setDownloadProgress({ done, total }),
-        { title: song.name, artist: song.singer, album: song.album },
+        {
+          title: song.name,
+          artist: song.singer,
+          album: song.album,
+          artworkUrl: song.img || undefined,
+          lyrics: lyrics ?? undefined,
+        },
       )
       addDownload({
         id: `${activeId}:${song.songmid}`,
         name: `${song.name} - ${song.singer}`,
-        path,
+        path: result.path,
         downloadedAt: Date.now(),
+        sourceId: activeId,
+        songmid: song.songmid,
+        quality,
+        album: song.album,
+        duration: song.interval,
+        artworkPath: result.artworkPath ?? undefined,
+        lyrics: lyrics ?? undefined,
       })
       setHint(`已下载：${song.name}`)
     } catch (error) {
@@ -368,6 +388,16 @@ export function OnlineSourcePanel() {
           <ul className="online-results">
             {downloads.map((item) => (
               <li key={item.id} className="online-row">
+                {item.artworkPath !== undefined ? (
+                  <img
+                    className="library-cover"
+                    src={convertFileSrc(item.artworkPath)}
+                    alt=""
+                    loading="lazy"
+                  />
+                ) : (
+                  <span className="library-cover library-cover-empty">♪</span>
+                )}
                 <span className="online-name">{item.name}</span>
                 <span className="online-singer">
                   {new Date(item.downloadedAt).toLocaleDateString()}

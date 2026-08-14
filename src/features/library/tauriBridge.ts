@@ -39,28 +39,39 @@ export interface DownloadProgressMsg {
   readonly total: number
 }
 
+export interface DownloadResult {
+  readonly path: string
+  readonly artworkPath: string | null
+}
+
+export interface DownloadMeta {
+  readonly title: string
+  readonly artist: string
+  readonly album: string
+  readonly artworkUrl?: string
+  readonly lyrics?: string
+}
+
 /**
- * 下载音源曲目到 ~/Music/Mymusic（Rust reqwest 流式 + 进度 Channel），返回绝对路径。
+ * 下载音源曲目到 ~/Music/Mymusic（Rust reqwest 流式 + 进度 Channel），返回音频/封面路径。
  * 文件已存在时直接返回既有路径（跳过重复下载）；
- * 提供 metadata 时下载完成后写入文件标签（title/artist/album，机器可识别）。
+ * meta 元数据写入文件标签（含封面嵌入 + 歌词帧），封面同时落盘 covers/。
  */
 export async function downloadFile(
   url: string,
   fileName: string,
   onProgress: (downloaded: number, total: number) => void,
-  metadata?: { readonly title: string; readonly artist: string; readonly album: string },
-): Promise<string> {
+  meta?: DownloadMeta,
+): Promise<DownloadResult> {
   const progress = new Channel<DownloadProgressMsg>()
   progress.onmessage = (msg) => {
     onProgress(msg.downloaded, msg.total)
   }
-  return invoke<string>('download_file', {
+  return invoke<DownloadResult>('download_file', {
     url,
     fileName,
     onProgress: progress,
-    title: metadata?.title ?? null,
-    artist: metadata?.artist ?? null,
-    album: metadata?.album ?? null,
+    meta: meta ?? null,
   })
 }
 
