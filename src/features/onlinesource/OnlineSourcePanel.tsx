@@ -37,6 +37,7 @@ export function OnlineSourcePanel() {
   const playTrack = useQueueStore((s) => s.playTrack)
   const libraryTracks = useLibraryStore((s) => s.tracks)
   const setLyricOverride = useLyricOverrideStore((s) => s.set)
+  const lyricOverride = useLyricOverrideStore((s) => s.text)
 
   const runtimeRef = useRef<SourceRuntime | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -237,6 +238,14 @@ export function OnlineSourcePanel() {
         </button>
       </div>
       {hint !== null && <div className="online-hint">{hint}</div>}
+      {lyricOverride !== null && (
+        <div className="online-hint">
+          已注入音源歌词
+          <button type="button" onClick={() => setLyricOverride(null)}>
+            清除歌词
+          </button>
+        </div>
+      )}
       {results.length > 0 ? (
         <ul className="online-results">
           {results.map((song) => (
