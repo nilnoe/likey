@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SpectrumFrame } from '../analysis/SpectrumExtractor'
-import { SpectrumBarRenderer } from './SpectrumBarRenderer'
+import { AMPLITUDE_SCALE, SpectrumBarRenderer } from './SpectrumBarRenderer'
 import { PEAK_DROP_PER_FRAME, computePulse, smoothBars, updatePeaks } from './SpectrumStyle'
 
 describe('smoothBars', () => {
@@ -186,8 +186,9 @@ describe('SpectrumBarRenderer', () => {
     renderer.render(makeFrame([0.9, 0.1, 0.1, 0.1]), 0)
     const bars = calls.filter((c) => c.startsWith('roundRect'))
     // i=0 的四个象限：Q2/Q3 x=3×slot=112.5（中线左侧），Q1/Q4 x=4×slot=150（中线右侧）
-    // AMPLITUDE_SCALE=0.9：h = max(0.5, v×75×0.9×1)，与实现同算式避免浮点误差
-    const yTop = (v: number): string => (75 - Math.max(0.5, f32(v) * 75 * 0.9 * 1)).toFixed(1)
+    // AMPLITUDE_SCALE：h = max(0.5, v×75×AMP×1)，与实现同算式避免浮点误差
+    const yTop = (v: number): string =>
+      (75 - Math.max(0.5, f32(v) * 75 * AMPLITUDE_SCALE * 1)).toFixed(1)
     expect(bars.slice(0, 4)).toEqual([
       `roundRect(112.5,${yTop(0.9)},3.0)`, // Q2 左上
       `roundRect(150.0,${yTop(0.9)},3.0)`, // Q1 右上
@@ -297,8 +298,8 @@ describe('SpectrumBarRenderer', () => {
     renderer.render(makeFrame([0.9, 0.1]), 0)
     // slot = 300/4 = 75, r = 37.5；弧链顺序：顶面填充(4) → 顶面高光(4) → 底面填充(4) → 底面高光(4)
     const arcs = calls.filter((c) => c.startsWith('arc'))
-    // AMPLITUDE_SCALE=0.9：h = max(0.5, v×75×0.9×1)；顶面圆心 cy = 75 - h + 37.5，底面 cy = 75 + h - 37.5
-    const hOf = (v: number): number => Math.max(0.5, f32(v) * 75 * 0.9 * 1)
+    // AMPLITUDE_SCALE：h = max(0.5, v×75×AMP×1)；顶面圆心 cy = 75 - h + 37.5，底面 cy = 75 + h - 37.5
+    const hOf = (v: number): number => Math.max(0.5, f32(v) * 75 * AMPLITUDE_SCALE * 1)
     const cyTop = (v: number): string => (75 - hOf(v) + 37.5).toFixed(1)
     const cyBottom = (v: number): string => (75 + hOf(v) - 37.5).toFixed(1)
     expect(arcs[1]).toBe(`arc(112.5,${cyTop(0.9)},37.5)`) // 顶面左半低频：圆心贴近中心线
@@ -328,7 +329,8 @@ describe('SpectrumBarRenderer', () => {
     expect(calls.filter((c) => c.startsWith('fillRect'))).toHaveLength(8)
     const bars = calls.filter((c) => c.startsWith('roundRect'))
     // slot = 300/4 = 75, barWidth = 75 - 9 = 66, radius = 33（胶囊全圆角）
-    const yTop = (v: number): string => (75 - Math.max(0.5, f32(v) * 75 * 0.9 * 1)).toFixed(1)
+    const yTop = (v: number): string =>
+      (75 - Math.max(0.5, f32(v) * 75 * AMPLITUDE_SCALE * 1)).toFixed(1)
     expect(bars[0]).toBe(`roundRect(75.0,${yTop(0.5)},33.0)`) // i=0 合并柱 (max(0.5,0.25)=0.5) 贴中线
     expect(bars[1]).toBe(`roundRect(150.0,${yTop(0.5)},33.0)`) // Q1
     expect(bars[4]).toBe(`roundRect(0.0,${yTop(0.75)},33.0)`) // i=1 合并柱 (max(0.75,0)=0.75) 回外缘
@@ -359,10 +361,11 @@ describe('SpectrumBarRenderer', () => {
     // 4 条横向带（无峰值线/无镜像放大），自左向右伸缩
     expect(rects).toHaveLength(4)
     // stripHeight = 150/4 = 37.5, gap = 1.5, h = 36；低频 i=0 在最底部
-    // 宽度同样乘 AMPLITUDE_SCALE=0.9：满能量也不顶到右边缘
-    expect(rects[0]).toBe('fillRect(0.00,113.25,135.00,36.00)') // 低频带：宽 0.5×300×0.9
-    expect(rects[1]).toBe('fillRect(0.00,75.75,67.50,36.00)') // 中频带
-    expect(rects[2]).toBe('fillRect(0.00,38.25,202.50,36.00)') // 高频带：宽 0.75×300×0.9
+    // 宽度同样乘 AMPLITUDE_SCALE：满能量也不顶到右边缘
+    const wOf = (v: number): string => Math.max(0.5, f32(v) * 300 * AMPLITUDE_SCALE * 1).toFixed(2)
+    expect(rects[0]).toBe(`fillRect(0.00,113.25,${wOf(0.5)},36.00)`) // 低频带
+    expect(rects[1]).toBe(`fillRect(0.00,75.75,${wOf(0.25)},36.00)`) // 中频带
+    expect(rects[2]).toBe(`fillRect(0.00,38.25,${wOf(0.75)},36.00)`) // 高频带
     expect(rects[3]).toBe('fillRect(0.00,0.75,0.50,36.00)') // 顶部静音带保底 0.5px
     expect(calls).not.toContain('roundRect')
     expect(calls).not.toContain('closePath')
@@ -383,7 +386,8 @@ describe('SpectrumBarRenderer', () => {
     expect(bars).toHaveLength(8)
     expect(calls.filter((c) => c.startsWith('fillRect'))).toHaveLength(8) // 峰值线 × 2 象限
     // slot = 300/8 = 37.5；正弦构图：低频在外缘、高频在中线
-    const yTop = (v: number): string => (75 - Math.max(0.5, f32(v) * 75 * 0.9 * 1)).toFixed(1)
+    const yTop = (v: number): string =>
+      (75 - Math.max(0.5, f32(v) * 75 * AMPLITUDE_SCALE * 1)).toFixed(1)
     expect(bars[0]).toBe(`roundRect(0.0,${yTop(0.9)},3.0)`) // Q2 低频柱在最左缘向上
     expect(bars[1]).toBe('roundRect(262.5,75.0,3.0)') // Q4 低频柱在最右缘向下
     expect(bars[7]).toBe('roundRect(150.0,75.0,3.0)') // Q4 高频柱在中线
