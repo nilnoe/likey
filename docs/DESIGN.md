@@ -446,7 +446,7 @@ export interface SpectrumStyle {
   readonly fallSpeed: number // 0.85–0.95，越大拖尾越长
   readonly beatPulse: boolean // beat 时整体脉冲
   readonly glow: boolean // 背景氛围光晕（色温随频段 + 节拍呼吸）
-  readonly mode: 'bars' | 'liquid' // 视觉形态：频谱柱 / 无缝弧面液体剪影
+  readonly mode: 'bars' | 'liquid' | 'chunky' // 视觉形态：频谱柱 / 液体剪影 / 加宽胶囊柱
 }
 ```
 
@@ -455,7 +455,7 @@ export interface SpectrumStyle {
 - 单一 `requestAnimationFrame` 循环，多渲染器复用同一循环（未来歌词卡拉OK 进度也挂同一循环）。
 - 每帧：`nextFrame()` → 平滑 → 画柱 + 峰值线 → 轮询 `beatDetector` → 若 hit 则注入脉冲（scale 1.0→1.06→回弹）。
 - 四象限镜像（低频居中排列）：Q1/Q2（上）与 Q3/Q4（下）平移互换——低音柱在中心相会形成山峰，高频向两侧展开；上半全主渐变，下半为完全倒影：中心线 50% 混合色 @45% 透明度，向下渐隐至 6% 并镜像回底色（`color.ts mixWithAlpha`/`hexWithAlpha`），无硬切割。
-- 两种视觉形态（`mode`，运行时偏好，`visualizerModeStore` 驱动，可随时切换）：`bars` 频谱柱 + 峰值线；`liquid` 液体剪影——无缝弧面（每段半圆弧首尾相接）上下各一条，填充同一渐变，表面另描一圈高光边（顶面 0.4 白 / 倒影面 0.22 白），液体模式不画峰值线。
+- 三种视觉形态（`mode`，运行时偏好，`visualizerModeStore` 驱动，可随时切换）：`bars` 频谱柱 + 峰值线；`liquid` 液体剪影——无缝弧面（每段半圆弧首尾相接）上下各一条，填充同一渐变，表面另描一圈高光边（顶面 0.4 白 / 倒影面 0.22 白），液体模式不画峰值线；`chunky` 加宽柱——柱数减半（相邻两根取 max 合并）、柱宽 ≈ 槽宽、顶部全圆角成胶囊状，保留峰值线。
 - 背景氛围光晕：`ambient.ts computeGlow` 依据三段能量算色温（低频暖/高频冷，指数平滑）与透明度（含节拍呼吸），中心径向渐变铺底。
 - Canvas 尺寸按 `dpr` 缩放，`getBoundingClientRect` 变化时重设。
 - **性能预算：单帧渲染 ≤ 8ms，空闲时 CPU < 3%，播放时 < 5%**。Canvas 2D 画 48–64 根柱 + 峰值线 + 光晕远低于此预算，无 WebGL 必要。

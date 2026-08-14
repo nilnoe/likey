@@ -2,6 +2,7 @@ import { useVisualizerModeStore, type VisualizerMode } from '../../state/visuali
 
 const OPTIONS: ReadonlyArray<{ value: VisualizerMode; label: string }> = [
   { value: 'liquid', label: '液体音浪' },
+  { value: 'chunky', label: '加宽柱' },
   { value: 'bars', label: '频谱柱' },
 ]
 

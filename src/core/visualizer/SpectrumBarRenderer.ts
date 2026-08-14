@@ -115,20 +115,60 @@ export class SpectrumBarRenderer {
     }
     if (this.style.mode === 'liquid') {
       this.drawLiquid(width, height)
+    } else if (this.style.mode === 'chunky') {
+      this.drawChunky(width, height)
     } else {
       this.drawBars(width, height)
     }
   }
 
-  /** 频谱柱模式：四象限低频居中 + 完全倒影 + 峰值线。 */
+  /** 频谱柱模式：细柱 + 峰值线。 */
   private drawBars(width: number, height: number): void {
+    const count = this.values.length
+    const slot = width / (this.style.mirror ? count * 2 : count)
+    const barWidth = Math.max(1, slot - this.style.gap)
+    this.drawBarGrid(
+      height,
+      slot,
+      barWidth,
+      count,
+      Math.min(barWidth / 2, 3),
+      (i) => this.values[i] ?? 0,
+      (i) => this.peaks[i] ?? 0,
+    )
+  }
+
+  /**
+   * 加宽柱模式：柱数减半（相邻两根取最大值合并）、柱宽 ≈ 槽宽，顶部全圆角成胶囊状。
+   */
+  private drawChunky(width: number, height: number): void {
+    const count = Math.max(1, Math.ceil(this.values.length / 2))
+    const slot = width / (this.style.mirror ? count * 2 : count)
+    const barWidth = Math.max(1, slot - Math.max(1, slot * 0.12))
+    this.drawBarGrid(
+      height,
+      slot,
+      barWidth,
+      count,
+      barWidth / 2,
+      (i) => Math.max(this.values[i * 2] ?? 0, this.values[i * 2 + 1] ?? 0),
+      (i) => Math.max(this.peaks[i * 2] ?? 0, this.peaks[i * 2 + 1] ?? 0),
+    )
+  }
+
+  /** 柱网格通用绘制：四象限低频居中 + 完全倒影 + 峰值线。 */
+  private drawBarGrid(
+    height: number,
+    slot: number,
+    barWidth: number,
+    count: number,
+    radius: number,
+    valueAt: (i: number) => number,
+    peakAt: (i: number) => number,
+  ): void {
     const ctx = this.ctx
     if (ctx === null) return
     const mirror = this.style.mirror
-    const count = this.values.length
-    const total = mirror ? count * 2 : count
-    const slot = width / total
-    const barWidth = Math.max(1, slot - this.style.gap)
     const pulseScale = 1 + 0.05 * this.pulse
     const baseY = height / 2
     const halfHeight = mirror ? height / 2 : height
@@ -136,46 +176,45 @@ export class SpectrumBarRenderer {
     const faded = mirror ? this.ensureFadedGradient(height) : primary
 
     for (let i = 0; i < count; i++) {
-      const value = this.values[i] ?? 0
-      const barHeight = this.barHeightOf(value, halfHeight, pulseScale)
+      const barHeight = this.barHeightOf(valueAt(i), halfHeight, pulseScale)
       if (mirror) {
         // 四象限低频居中 + 完全倒影：上半（Q1/Q2）主渐变，
         // 下半（Q3/Q4）同色倒影，自中心线向下渐隐（无硬切割）
         ctx.fillStyle = primary
-        this.drawBar(slot * (count - 1 - i), baseY - barHeight, barWidth, barHeight) // Q2（左上）
-        this.drawBar(slot * (count + i), baseY - barHeight, barWidth, barHeight) // Q1（右上）
+        this.drawBar(slot * (count - 1 - i), baseY - barHeight, barWidth, barHeight, radius) // Q2
+        this.drawBar(slot * (count + i), baseY - barHeight, barWidth, barHeight, radius) // Q1
         ctx.fillStyle = faded
-        this.drawBar(slot * (count + i), baseY, barWidth, barHeight) // Q4（右下）
-        this.drawBar(slot * (count - 1 - i), baseY, barWidth, barHeight) // Q3（左下）
+        this.drawBar(slot * (count + i), baseY, barWidth, barHeight, radius) // Q4
+        this.drawBar(slot * (count - 1 - i), baseY, barWidth, barHeight, radius) // Q3
       } else {
         ctx.fillStyle = primary
-        this.drawBar(slot * i, height - barHeight, barWidth, barHeight)
+        this.drawBar(slot * i, height - barHeight, barWidth, barHeight, radius)
       }
     }
 
     if (this.style.peakHold) {
       for (let i = 0; i < count; i++) {
-        const peakHeight = (this.peaks[i] ?? 0) * halfHeight * pulseScale
+        const peakY = peakAt(i) * halfHeight * pulseScale
         if (mirror) {
           ctx.fillStyle = PEAK_COLOR
-          ctx.fillRect(slot * (count - 1 - i), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q2
-          ctx.fillRect(slot * (count + i), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q1
+          ctx.fillRect(slot * (count - 1 - i), baseY - peakY, barWidth, PEAK_LINE_HEIGHT) // Q2
+          ctx.fillRect(slot * (count + i), baseY - peakY, barWidth, PEAK_LINE_HEIGHT) // Q1
           ctx.fillStyle = FADED_PEAK_COLOR
           ctx.fillRect(
             slot * (count + i),
-            baseY + peakHeight - PEAK_LINE_HEIGHT,
+            baseY + peakY - PEAK_LINE_HEIGHT,
             barWidth,
             PEAK_LINE_HEIGHT,
           ) // Q4
           ctx.fillRect(
             slot * (count - 1 - i),
-            baseY + peakHeight - PEAK_LINE_HEIGHT,
+            baseY + peakY - PEAK_LINE_HEIGHT,
             barWidth,
             PEAK_LINE_HEIGHT,
           ) // Q3
         } else {
           ctx.fillStyle = PEAK_COLOR
-          ctx.fillRect(slot * i, height - peakHeight - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT)
+          ctx.fillRect(slot * i, height - peakY - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT)
         }
       }
     }
@@ -297,12 +336,12 @@ export class SpectrumBarRenderer {
     ctx.fill()
   }
 
-  private drawBar(x: number, y: number, w: number, h: number): void {
+  private drawBar(x: number, y: number, w: number, h: number, radius: number): void {
     const ctx = this.ctx
     if (ctx === null) return
     if (this.style.rounded && typeof ctx.roundRect === 'function') {
       ctx.beginPath()
-      ctx.roundRect(x, y, w, h, Math.min(w / 2, 3))
+      ctx.roundRect(x, y, w, h, radius)
       ctx.fill()
     } else {
       ctx.fillRect(x, y, w, h)

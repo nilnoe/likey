@@ -55,6 +55,15 @@ describe('parseSkin', () => {
       expect(result.skin.spectrumStyle.glow).toBe(false)
       expect(result.skin.spectrumStyle.mode).toBe('bars')
     }
+    const chunky = {
+      ...VALID_SKIN,
+      spectrumStyle: { ...VALID_SKIN.spectrumStyle, mode: 'chunky' },
+    }
+    const chunkyResult = parseSkin(JSON.stringify(chunky))
+    expect(chunkyResult.ok).toBe(true)
+    if (chunkyResult.ok) {
+      expect(chunkyResult.skin.spectrumStyle.mode).toBe('chunky')
+    }
   })
 
   it('rejects invalid JSON', () => {

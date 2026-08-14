@@ -43,7 +43,7 @@ interface FakeCtx {
   clearRect(): void
   fillRect(): void
   beginPath(): void
-  roundRect(x: number, y: number): void
+  roundRect(x: number, y: number, w: number, h: number, r: number): void
   fill(): void
   rect(): void
   arc(x: number, y: number, r: number): void
@@ -78,8 +78,8 @@ function makeFakeCtx(): { ctx: FakeCtx; calls: string[] } {
     beginPath: (): void => {
       calls.push('beginPath')
     },
-    roundRect: (x: number, y: number): void => {
-      calls.push(`roundRect(${x.toFixed(1)},${y.toFixed(1)})`)
+    roundRect: (x: number, y: number, _w: number, _h: number, r: number): void => {
+      calls.push(`roundRect(${x.toFixed(1)},${y.toFixed(1)},${r.toFixed(1)})`)
     },
     fill: (): void => {
       calls.push('fill')
@@ -173,13 +173,13 @@ describe('SpectrumBarRenderer', () => {
     const bars = calls.filter((c) => c.startsWith('roundRect'))
     // i=0 的四个象限：Q2/Q3 x=3×slot=112.5（中线左侧），Q1/Q4 x=4×slot=150（中线右侧）
     expect(bars.slice(0, 4)).toEqual([
-      'roundRect(112.5,7.5)', // Q2 左上
-      'roundRect(150.0,7.5)', // Q1 右上
-      'roundRect(150.0,75.0)', // Q4 右下
-      'roundRect(112.5,75.0)', // Q3 左下
+      'roundRect(112.5,7.5,3.0)', // Q2 左上
+      'roundRect(150.0,7.5,3.0)', // Q1 右上
+      'roundRect(150.0,75.0,3.0)', // Q4 右下
+      'roundRect(112.5,75.0,3.0)', // Q3 左下
     ])
     // i=3 高频柱（最矮）落回外缘：Q2 x=0（面板最左）
-    expect(bars[12]).toBe('roundRect(0.0,67.5)')
+    expect(bars[12]).toBe('roundRect(0.0,67.5,3.0)')
   })
 
   it('mirror uses a mirror-fading gradient for the bottom half', () => {
@@ -296,5 +296,20 @@ describe('SpectrumBarRenderer', () => {
     expect(calls.filter((c) => c.startsWith('arc'))).toHaveLength(4)
     expect(calls.filter((c) => c === 'closePath')).toHaveLength(1)
     expect(calls.filter((c) => c === 'stroke')).toHaveLength(1)
+  })
+
+  it('chunky mode halves bar count and draws fat capsules', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 4, mirror: true, mode: 'chunky' })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.5, 0.25, 0.75, 0]), 0)
+    // 4 柱 → 2 根合并宽柱 × 4 象限 = 8 根；峰值线同样 8 条
+    expect(calls.filter((c) => c.startsWith('roundRect'))).toHaveLength(8)
+    expect(calls.filter((c) => c === 'fillRect')).toHaveLength(8)
+    const bars = calls.filter((c) => c.startsWith('roundRect'))
+    // slot = 300/4 = 75, barWidth = 75 - 9 = 66, radius = 33（胶囊全圆角）
+    expect(bars[0]).toBe('roundRect(75.0,37.5,33.0)') // i=0 合并柱 (max(0.5,0.25)=0.5) 贴中线
+    expect(bars[1]).toBe('roundRect(150.0,37.5,33.0)') // Q1
+    expect(bars[4]).toBe('roundRect(0.0,18.8,33.0)') // i=1 合并柱 (max(0.75,0)=0.75) 回外缘
   })
 })
