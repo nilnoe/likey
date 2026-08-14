@@ -770,7 +770,11 @@ interface QueueStoreState {
 
 - 播放：`getMusicUrl` 返回远程 URL → 队列 `TrackSource.url` → `QueueController.readSource` 走插件 HTTP 原生取字节（免 CORS）→ 现有 PlayerCore 解码链与 LRU 缓存全部复用
 - 歌词：`getLyric` 返回 LRC 文本 → `lyricOverrideStore` 注入歌词面板（优先于同名 .lrc 匹配）
-- 内置示例音源（`public/sources/example.js`）：搜索并播放本地音乐库（曲库经 `{ type: 'config' }` 消息注入），离线可验证全链路
+- 内置音源（`public/sources/`，运行时经资产协议加载）：
+  - `audius.js`：Audius 公开 API（免费开源音乐平台，无需密钥）——真实在线曲目全曲播放；流媒体 CDN 校验 User-Agent，经脚本 headers 透传（reqwest 无浏览器 header 限制）
+  - `itunes.js`：iTunes Search API 试听源——主流曲库 30s 片段（平台限制）
+  - `example.js`：本地音乐库示例源（离线验证全链路）
+  - 真实可用性验证：curl 端到端（搜索/签名跳转/200 audio/mpeg）+ WKWebView 探测 10/10（含 Audius 真实网络往返）
 - 用户音源脚本持久化到 `tauri-plugin-store`
 - 安全边界：脚本无 DOM 网络特权（fetch 全部代理）、调用带超时、结果强校验、脚本崩溃不影响宿主
 

@@ -15,6 +15,7 @@ const { SANDBOX_BOOTSTRAP_PRE, SANDBOX_BOOTSTRAP_POST } = await server.ssrLoadMo
   '/src/features/onlinesource/bootstrap.ts',
 )
 const exampleCode = (await server.ssrLoadModule('/public/sources/example.js?raw')).default
+const audiusCode = (await server.ssrLoadModule('/public/sources/audius.js?raw')).default
 
 // fetch 代理专项测试音源：search 内部发起 fetch，验证代理请求/响应往返
 const fetchTestCode = `
@@ -43,6 +44,11 @@ function report(step, ok, detail) {
 function finish() {
   window.webkit.messageHandlers.result.postMessage({ done: true })
 }
+var doneFlows = 0
+function flowDone() {
+  doneFlows += 1
+  if (doneFlows >= 2) finish()
+}
 window.onerror = function (msg, source, line) {
   report('harness-error', false, msg + ' @' + source + ':' + line)
   finish()
@@ -63,6 +69,22 @@ function makeFrame(code) {
 
 var exampleFrame = makeFrame(${JSON.stringify(SANDBOX_BOOTSTRAP_PRE)} + ${JSON.stringify(exampleCode)} + ${JSON.stringify(SANDBOX_BOOTSTRAP_POST)})
 var fetchFrame = makeFrame(${JSON.stringify(SANDBOX_BOOTSTRAP_PRE)} + ${JSON.stringify(fetchTestCode)} + ${JSON.stringify(SANDBOX_BOOTSTRAP_POST)})
+var audiusFrame = makeFrame(${JSON.stringify(SANDBOX_BOOTSTRAP_PRE)} + ${JSON.stringify(audiusCode)} + ${JSON.stringify(SANDBOX_BOOTSTRAP_POST)})
+
+function respondFetch(frame, fetchId, ok, status, headers, body) {
+  if (body) {
+    frame.contentWindow.postMessage(
+      { type: 'fetch-response', fetchId: fetchId, ok: ok, status: status, headers: headers, body: body },
+      '*',
+      [body],
+    )
+  } else {
+    frame.contentWindow.postMessage(
+      { type: 'fetch-response', fetchId: fetchId, ok: ok, status: status, headers: headers, body: undefined },
+      '*',
+    )
+  }
+}
 
 window.addEventListener('message', function (event) {
   var data = event.data
@@ -130,14 +152,66 @@ window.addEventListener('message', function (event) {
         data.ok && Array.isArray(resultSongs) && resultSongs.length === 1 && resultSongs[0].songmid === 'm1',
         JSON.stringify(resultSongs),
       )
-      finish()
+      flowDone()
+    }
+  } else if (event.source === audiusFrame.contentWindow) {
+    if (data.type === 'ready') {
+      report('audius-ready', data.ok, data.error || '')
+      if (data.ok) {
+        audiusFrame.contentWindow.postMessage(
+          { type: 'call', callId: 'a1', method: 'search', args: ['daft punk', 1, 5] },
+          '*',
+        )
+      }
+    } else if (data.type === 'fetch') {
+      // 真实网络请求（Audius API 带 access-control-allow-origin: *）；
+      // 脚本自定义 headers 不回传（浏览器 CORS 预检限制；真实应用走原生 HTTP 无此限制）
+      window
+        .fetch(data.url)
+        .then(function (res) {
+          return res.arrayBuffer().then(function (buf) {
+            var headers = {}
+            res.headers.forEach(function (value, key) {
+              headers[key.toLowerCase()] = value
+            })
+            respondFetch(audiusFrame, data.fetchId, res.ok, res.status, headers, buf)
+          })
+        })
+        .catch(function () {
+          respondFetch(audiusFrame, data.fetchId, false, 0, {}, undefined)
+        })
+    } else if (data.type === 'call-result' && data.callId === 'a1') {
+      var audiusSongs = data.ok ? data.value : null
+      var audiusValid =
+        Array.isArray(audiusSongs) &&
+        audiusSongs.length >= 1 &&
+        typeof audiusSongs[0].songmid === 'string' &&
+        typeof audiusSongs[0].name === 'string' &&
+        audiusSongs[0].name.length > 0
+      report('audius-search-real', data.ok && audiusValid, JSON.stringify(audiusSongs).slice(0, 200))
+      if (data.ok && audiusValid) {
+        audiusFrame.contentWindow.postMessage(
+          { type: 'call', callId: 'a2', method: 'getMusicUrl', args: [audiusSongs[0].songmid, '128k'] },
+          '*',
+        )
+      } else {
+        flowDone()
+      }
+    } else if (data.type === 'call-result' && data.callId === 'a2') {
+      var streamUrl = data.ok ? data.value : null
+      report(
+        'audius-getMusicUrl-real',
+        data.ok && typeof streamUrl === 'string' && streamUrl.indexOf('https://api.audius.co/v1/tracks/') === 0,
+        String(streamUrl),
+      )
+      flowDone()
     }
   }
 })
 
 setTimeout(function () {
   window.webkit.messageHandlers.result.postMessage({ done: true, timeout: true })
-}, 20000)
+}, 30000)
 `
 
 const html = `<!doctype html>

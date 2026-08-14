@@ -72,6 +72,8 @@ swift scripts/webview-source-probe.swift      # 系统 WKWebView 执行运行时
 
 ## S7 .js 音源接入验收清单（G4）
 
+- [ ] 内置 Audius 音源：搜索真实在线曲目并完整播放
+- [ ] 内置 iTunes 试听源：搜索主流曲目并播放 30s 片段
 - [ ] 内置示例音源可搜索并播放本地音乐库曲目（需先扫描音乐库）
 - [ ] 导入 lx-music 兼容 .js 音源后可搜索/播放（原生 HTTP 免 CORS）/取歌词
 - [ ] 音源脚本重启后保留；脚本报错不影响播放器其他功能

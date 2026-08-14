@@ -65,9 +65,9 @@ export function OnlineSourcePanel() {
     let cancelled = false
     void (async () => {
       let code = source.code
-      if (source.builtin) {
+      if (source.builtin && source.assetPath !== undefined) {
         try {
-          const response = await fetch('/sources/example.js')
+          const response = await fetch(source.assetPath)
           if (!response.ok) throw new Error(`HTTP ${response.status}`)
           code = await response.text()
         } catch (error) {

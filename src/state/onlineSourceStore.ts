@@ -4,18 +4,35 @@ import { loadOnlineSources, saveOnlineSources } from '../features/player/persist
 
 export interface OnlineSource extends PersistedSource {
   readonly builtin: boolean
+  /** 内置源的脚本资产路径（运行时 fetch；用户源直接内嵌 code）。 */
+  readonly assetPath?: string
 }
 
-const BUILTIN_SOURCE_ID = 'demo-library'
+export const BUILTIN_SOURCES: readonly OnlineSource[] = [
+  {
+    id: 'audius',
+    name: '内置 · Audius（免费音乐平台）',
+    code: '',
+    builtin: true,
+    assetPath: '/sources/audius.js',
+  },
+  {
+    id: 'itunes-preview',
+    name: '内置 · iTunes 试听（30s 片段）',
+    code: '',
+    builtin: true,
+    assetPath: '/sources/itunes.js',
+  },
+  {
+    id: 'demo-library',
+    name: '内置 · 本地音乐库（示例）',
+    code: '',
+    builtin: true,
+    assetPath: '/sources/example.js',
+  },
+]
 
-export const BUILTIN_SOURCE: OnlineSource = {
-  id: BUILTIN_SOURCE_ID,
-  name: '内置 · 本地音乐库（示例）',
-  code: '', // 运行时从 /sources/example.js 加载
-  builtin: true,
-}
-
-/** 音源管理 UI 状态：内置示例源 + 用户导入源（持久化）。 */
+/** 音源管理 UI 状态：内置源 + 用户导入源（持久化）。 */
 interface OnlineSourceStoreState {
   readonly sources: readonly OnlineSource[]
   readonly activeId: string
@@ -36,8 +53,8 @@ function persistUserSources(sources: readonly OnlineSource[]): void {
 }
 
 export const useOnlineSourceStore = create<OnlineSourceStoreState>((set, get) => ({
-  sources: [BUILTIN_SOURCE],
-  activeId: BUILTIN_SOURCE_ID,
+  sources: BUILTIN_SOURCES,
+  activeId: BUILTIN_SOURCES[0]?.id ?? 'audius',
   loaded: false,
 
   restore: async () => {
@@ -70,7 +87,7 @@ export const useOnlineSourceStore = create<OnlineSourceStoreState>((set, get) =>
     const sources = get().sources.filter((s) => s.id !== id)
     set({
       sources,
-      activeId: get().activeId === id ? (sources[0]?.id ?? BUILTIN_SOURCE_ID) : get().activeId,
+      activeId: get().activeId === id ? (sources[0]?.id ?? 'audius') : get().activeId,
     })
     persistUserSources(sources)
   },

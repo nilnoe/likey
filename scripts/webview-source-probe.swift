@@ -37,9 +37,9 @@ var finished = false
 func finishVerdict() {
     guard !finished else { return }
     finished = true
-    let passed = reports.count >= 7 && reports.allSatisfy { $0.ok }
-    print(passed && reports.count >= 7 ? "🎉 音源运行时契约全部通过（7/7）" : "⚠️ 探测未全部通过（\(reports.count)/7 项）")
-    exit(passed && reports.count >= 7 ? 0 : 1)
+    let passed = reports.count >= 10 && reports.allSatisfy { $0.ok }
+    print(passed && reports.count >= 10 ? "🎉 音源运行时契约全部通过（10/10）" : "⚠️ 探测未全部通过（\(reports.count)/10 项）")
+    exit(passed && reports.count >= 10 ? 0 : 1)
 }
 
 let handler = MessageHandler { message in
@@ -61,7 +61,7 @@ let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), conf
 webView.loadHTMLString(html, baseURL: nil)
 
 // 超时兜底（正常由 harness 的 done 消息触发判定）
-DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
+DispatchQueue.main.asyncAfter(deadline: .now() + 40) {
     finishVerdict()
 }
 
