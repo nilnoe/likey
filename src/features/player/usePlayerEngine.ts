@@ -3,6 +3,7 @@ import { BeatDetector } from '../../core/analysis/BeatDetector'
 import { SpectrumExtractor } from '../../core/analysis/SpectrumExtractor'
 import { PlayerCore, type PlayerStatus } from '../../core/player/PlayerCore'
 import { WebAudioBackend } from '../../core/player/WebAudioBackend'
+import { useQueueStore } from '../../state/queueStore'
 
 /** 播放引擎：一次会话内稳定的 core 实例集合。 */
 export interface PlayerEngine {
@@ -13,7 +14,6 @@ export interface PlayerEngine {
 }
 
 export interface PlayerControls {
-  loadFile(file: File): Promise<void>
   toggle(): Promise<void>
   stop(): void
   seek(seconds: number): void
@@ -36,6 +36,7 @@ function createEngine(): PlayerEngine {
 /**
  * 播放引擎 hook：core 实例经 ref 保持稳定；
  * 高频数据（频谱/节拍）不经 React 状态，低频 UI 状态（status/position）4Hz 刷新。
+ * 首次挂载时把 PlayerCore 绑定到队列 store（模块级单例，StrictMode 安全）。
  */
 export function usePlayerEngine(): {
   engine: PlayerEngine
@@ -52,6 +53,7 @@ export function usePlayerEngine(): {
   const [position, setPosition] = useState(0)
 
   useEffect(() => {
+    useQueueStore.getState().bind(engine.player)
     const unsubscribe = engine.player.onStatusChange(setStatus)
     const interval = window.setInterval(() => {
       setPosition(engine.player.getPosition())
@@ -63,10 +65,6 @@ export function usePlayerEngine(): {
   }, [engine])
 
   const controls: PlayerControls = {
-    loadFile: async (file: File): Promise<void> => {
-      const data = await file.arrayBuffer()
-      await engine.player.load(file.name, data)
-    },
     toggle: async (): Promise<void> => {
       const current = engine.player.getStatus()
       if (current.kind === 'playing') {

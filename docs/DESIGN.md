@@ -274,6 +274,33 @@ export type DecodePipeline = (bytes: ArrayBuffer, format: AudioFormat) => Promis
 
 降级顺序：`AudioContext.decodeAudioData` 原生解码 → 失败则 WASM 解码器（`@wasm-audio-decoders/flac` 等，二期引入）→ 仍失败报 `decode-unsupported`。**Spike 阶段（S0）必须先验证 macOS WKWebView 对 flac 的原生解码能力**，这决定 WASM 兜底是否进入 MVP 范围。
 
+### 4.5 播放队列（QueueController，S1 引入）
+
+```ts
+// core/player/Queue.ts
+export interface PlaylistTrack { readonly id; readonly name; readonly file }  // S3 起替换为路径型 Track
+export interface TrackRef { readonly id; readonly name }                      // PlayerCore.load 契约（缓存 key）
+export type RepeatMode = 'off' | 'all' | 'one'
+export function createShuffleOrder(length, seed): readonly number[]  // mulberry32 确定性洗牌
+export function advanceAuto(count, current, order, repeat): number | null   // 自动推进（尊重循环）
+export function advanceManual / retreatManual                               // 手动切歌（无条件回绕）
+
+// core/player/QueueController.ts
+export interface QueuePlayer { load(track, data); play(); stop(); seek(); getStatus(); onTrackEnd() }
+export class QueueController {
+  getSnapshot(): QueueSnapshot   // { tracks, index, repeat, shuffle }
+  addFiles(files, playFirst?) / playIndex(i) / next() / prev()
+  setRepeat(mode) / toggleShuffle() / removeAt(i) / clear() / dispose()
+  onQueueChange / onIndexChange / onRepeatChange / onShuffleChange / onQueueEnded
+}
+```
+
+- 自动推进：订阅 `PlayerCore.trackEnd`；`repeat='one'` 重播当前曲（PlayerCore 自然结束后位置已归零）；`'off'` 到底触发 `queueEnded`；`'all'` 回绕
+- 手动切歌无条件回绕（repeat 模式不影响手动操作，与主流播放器一致）
+- 洗牌用带种子 PRNG（可复现、可单测）；`seedProvider` 可注入
+- 竞态防护：`playIndex` 在文件读取 await 后校验 index 未变才继续加载
+- 队列事件 → zustand store 镜像（§12），UI 不直接读控制器
+
 ---
 
 ## 5. 音频分析与律动（core/analysis）
@@ -635,17 +662,20 @@ export type SkinRegistry = {
 ## 12. 状态管理（zustand）
 
 ```ts
-// state/playerStore.ts
-interface PlayerState {
-  readonly status: PlayerStatus
-  readonly position: number // 秒，rAF 内节流更新（4Hz 更新 store，60Hz 直接给渲染器）
-  readonly volume: number
-  readonly queue: readonly Track['id'][]
-  readonly queueIndex: number
-  readonly repeat: 'off' | 'all' | 'one'
+// state/queueStore.ts（S1 已实现）
+interface QueueStoreState {
+  readonly tracks: readonly PlaylistTrack[]
+  readonly index: number
+  readonly repeat: RepeatMode
   readonly shuffle: boolean
+  bind(player: QueuePlayer): void
+  addFiles(...) / playIndex(...) / next() / prev() / removeAt(...) / clear()
+  setRepeat(...) / toggleShuffle()
 }
 ```
+
+- `QueueController` 是队列唯一事实来源（纯 TS 可单测），zustand store 仅镜像快照供 React 渲染
+- 播放器 `status/position` 当前由 `usePlayerEngine` 以 React 状态承载（4Hz 刷新）；后续里程碑若需跨组件共享再迁移至 playerStore
 
 关键点：**高频数据（频谱帧、节拍事件、逐字进度）不进 store**，由核心模块事件直达渲染器/歌词组件，store 只承载低频 UI 状态（避免每秒数千次 React 重渲染）。
 

@@ -1,5 +1,7 @@
 import { Emitter } from '../events/emitter'
+import { BufferCache } from './BufferCache'
 import type { DecodedBuffer, PlayerBackend, SourceHandle } from './PlayerBackend'
+import type { TrackRef } from './Queue'
 
 /** 播放器状态机（discriminated union，杜绝非法状态）。 */
 export type PlayerStatus =
@@ -28,6 +30,11 @@ interface ActiveSource {
   manualStop: boolean
 }
 
+export interface PlayerCoreOptions {
+  /** 解码缓冲缓存（默认 LRU 容量 2 ≈ 84MB 上限）。 */
+  readonly cache?: BufferCache<DecodedBuffer>
+}
+
 /**
  * 播放内核（纯 TS，无 DOM/React 依赖）。
  * 时间基：一切时间由 backend.context.currentTime 推导（单一音频时钟）。
@@ -41,9 +48,11 @@ export class PlayerCore {
   private volume = 1
   private readonly emitter = new Emitter<PlayerCoreEvents>()
   private readonly backend: PlayerBackend
+  private readonly cache: BufferCache<DecodedBuffer>
 
-  constructor(backend: PlayerBackend) {
+  constructor(backend: PlayerBackend, options: PlayerCoreOptions = {}) {
     this.backend = backend
+    this.cache = options.cache ?? new BufferCache<DecodedBuffer>(2)
   }
 
   getStatus(): PlayerStatus {
@@ -74,20 +83,29 @@ export class PlayerCore {
     return this.emitter.on('trackEnd', callback)
   }
 
-  async load(trackName: string, data: ArrayBuffer): Promise<void> {
+  async load(track: TrackRef, data: ArrayBuffer): Promise<void> {
     this.stopSource()
     this.buffer = null
     this.startOffset = 0
-    this.setStatus({ kind: 'loading', trackName })
+    this.setStatus({ kind: 'loading', trackName: track.name })
+    // 缓存命中：零等待就绪
+    const cached = this.cache.get(track.id)
+    if (cached !== undefined) {
+      if (this.status.kind !== 'loading' || this.status.trackName !== track.name) return
+      this.buffer = cached
+      this.setStatus({ kind: 'ready', trackName: track.name, paused: true })
+      return
+    }
     try {
       const buffer = await this.backend.decode(data)
       // 解码期间可能已被新的 load/stop 覆盖，丢弃过期结果
-      if (this.status.kind !== 'loading' || this.status.trackName !== trackName) return
+      if (this.status.kind !== 'loading' || this.status.trackName !== track.name) return
       this.buffer = buffer
-      this.setStatus({ kind: 'ready', trackName, paused: true })
+      this.cache.put(track.id, buffer)
+      this.setStatus({ kind: 'ready', trackName: track.name, paused: true })
     } catch (error: unknown) {
-      if (this.status.kind !== 'loading' || this.status.trackName !== trackName) return
-      this.setStatus({ kind: 'error', trackName, message: describeError(error) })
+      if (this.status.kind !== 'loading' || this.status.trackName !== track.name) return
+      this.setStatus({ kind: 'error', trackName: track.name, message: describeError(error) })
     }
   }
 

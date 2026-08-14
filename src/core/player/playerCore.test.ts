@@ -71,9 +71,13 @@ class FakeBackend implements PlayerBackend {
   }
 }
 
-async function loadedCore(backend: FakeBackend, duration = 10): Promise<PlayerCore> {
+async function loadedCore(
+  backend: FakeBackend,
+  track: { id: string; name: string } = { id: 't1', name: 'track.mp3' },
+  duration = 10,
+): Promise<PlayerCore> {
   const core = new PlayerCore(backend)
-  const loading = core.load('track.mp3', new ArrayBuffer(1))
+  const loading = core.load(track, new ArrayBuffer(1))
   backend.pending[0]?.resolve({ duration })
   await loading
   return core
@@ -105,7 +109,7 @@ describe('PlayerCore', () => {
   it('load failure → error status with message', async () => {
     const backend = new FakeBackend()
     const core = new PlayerCore(backend)
-    const loading = core.load('bad.mp3', new ArrayBuffer(1))
+    const loading = core.load({ id: 'bad', name: 'bad.mp3' }, new ArrayBuffer(1))
     backend.pending[0]?.reject(new Error('decode boom'))
     await loading
     expect(core.getStatus()).toEqual({
@@ -115,11 +119,30 @@ describe('PlayerCore', () => {
     })
   })
 
+  it('cache hit avoids re-decode for the same track id', async () => {
+    const backend = new FakeBackend()
+    const core = await loadedCore(backend, { id: 't1', name: 'track.mp3' })
+    await core.load({ id: 't1', name: 'track.mp3' }, new ArrayBuffer(1))
+    expect(backend.pending).toHaveLength(1) // 无第二次解码
+    expect(core.getStatus()).toEqual({ kind: 'ready', trackName: 'track.mp3', paused: true })
+    expect(core.getDuration()).toBe(10)
+  })
+
+  it('different track id decodes again', async () => {
+    const backend = new FakeBackend()
+    const core = await loadedCore(backend, { id: 't1', name: 'a.mp3' })
+    const loading = core.load({ id: 't2', name: 'b.mp3' }, new ArrayBuffer(2))
+    backend.pending[1]?.resolve({ duration: 20 })
+    await loading
+    expect(backend.pending).toHaveLength(2)
+    expect(core.getDuration()).toBe(20)
+  })
+
   it('stale load result is discarded when superseded', async () => {
     const backend = new FakeBackend()
     const core = new PlayerCore(backend)
-    const first = core.load('a.mp3', new ArrayBuffer(1))
-    const second = core.load('b.mp3', new ArrayBuffer(2))
+    const first = core.load({ id: 'a', name: 'a.mp3' }, new ArrayBuffer(1))
+    const second = core.load({ id: 'b', name: 'b.mp3' }, new ArrayBuffer(2))
     backend.pending[1]?.resolve({ duration: 200 })
     await second
     backend.pending[0]?.resolve({ duration: 100 })

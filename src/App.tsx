@@ -1,8 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { FormatProbePanel } from './features/player/FormatProbePanel'
+import { PlaylistPanel } from './features/player/PlaylistPanel'
+import { filterAudioFiles } from './features/player/audioFiles'
 import { usePlayerEngine } from './features/player/usePlayerEngine'
 import { VisualizerCanvas } from './features/visualizer/VisualizerCanvas'
+import { useQueueStore } from './state/queueStore'
 
 function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
@@ -16,25 +19,56 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
 
+  const repeat = useQueueStore((s) => s.repeat)
+  const shuffle = useQueueStore((s) => s.shuffle)
+  const next = useQueueStore((s) => s.next)
+  const prev = useQueueStore((s) => s.prev)
+  const setRepeat = useQueueStore((s) => s.setRepeat)
+  const toggleShuffle = useQueueStore((s) => s.toggleShuffle)
+
   const duration = engine.player.getDuration()
   const canToggle = status.kind === 'playing' || status.kind === 'ready'
 
+  // 窗口级拖放：音频文件拖入即加入队列（队列为空时自动开始播放）
+  useEffect(() => {
+    const onDragOver = (event: DragEvent): void => {
+      event.preventDefault()
+    }
+    const onDrop = (event: DragEvent): void => {
+      event.preventDefault()
+      const files = filterAudioFiles(Array.from(event.dataTransfer?.files ?? []))
+      if (files.length > 0) {
+        void useQueueStore.getState().addFiles(files, true)
+      }
+    }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [])
+
   async function handleFiles(files: FileList | null): Promise<void> {
-    const file = files?.[0]
-    if (file === undefined) return
+    const list = filterAudioFiles(Array.from(files ?? []))
+    if (list.length === 0) return
     setBusy(true)
     try {
-      await controls.loadFile(file)
-      await controls.toggle()
+      await useQueueStore.getState().addFiles(list, true)
     } finally {
       setBusy(false)
     }
   }
 
+  const repeatLabel = repeat === 'off' ? '循环: 关' : repeat === 'all' ? '循环: 列表' : '循环: 单曲'
+  const cycleRepeat = (): void => {
+    setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')
+  }
+
   let statusText: string
   switch (status.kind) {
     case 'idle':
-      statusText = '未加载曲目 — 点击「打开音频」选择本地 mp3 / flac / wav'
+      statusText = '未加载曲目 — 添加音频或把音乐文件拖进窗口'
       break
     case 'loading':
       statusText = `解码中：${status.trackName}`
@@ -54,7 +88,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>Likey</h1>
-        <span className="app-subtitle">千千静听风律动播放器 · S0 Spike</span>
+        <span className="app-subtitle">千千静听风律动播放器 · S1 播放内核</span>
       </header>
       <main className="app-main">
         <section className="visualizer-panel">
@@ -63,7 +97,10 @@ export default function App() {
         <section className="transport">
           <div className="transport-row">
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
-              打开音频
+              添加音频
+            </button>
+            <button type="button" onClick={() => void prev()}>
+              ⏮ 上一曲
             </button>
             <button
               type="button"
@@ -72,8 +109,22 @@ export default function App() {
             >
               {status.kind === 'playing' ? '暂停' : '播放'}
             </button>
-            <button type="button" onClick={controls.stop} disabled={busy}>
-              停止
+            <button type="button" onClick={() => void next()}>
+              下一曲 ⏭
+            </button>
+            <button
+              type="button"
+              onClick={cycleRepeat}
+              className={repeat !== 'off' ? 'button-active' : undefined}
+            >
+              {repeatLabel}
+            </button>
+            <button
+              type="button"
+              onClick={toggleShuffle}
+              className={shuffle ? 'button-active' : undefined}
+            >
+              随机: {shuffle ? '开' : '关'}
             </button>
           </div>
           <input
@@ -103,11 +154,15 @@ export default function App() {
           </div>
           <div className="status-line">{statusText}</div>
         </section>
-        <FormatProbePanel backend={engine.backend} />
+        <div className="bottom-panels">
+          <PlaylistPanel playing={status.kind === 'playing'} />
+          <FormatProbePanel backend={engine.backend} />
+        </div>
         <input
           ref={fileInputRef}
           type="file"
           accept="audio/*,.mp3,.flac,.wav"
+          multiple
           className="hidden-input"
           onChange={(event) => void handleFiles(event.target.files)}
         />
