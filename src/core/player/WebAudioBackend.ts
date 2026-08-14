@@ -48,4 +48,14 @@ export class WebAudioBackend implements PlayerBackend {
   setVolume(volume: number): void {
     this.gain.gain.setTargetAtTime(volume, this.context.currentTime, 0.02)
   }
+
+  onStateChange(callback: (state: string) => void): () => void {
+    const handler = (): void => {
+      callback(this.context.state)
+    }
+    this.context.addEventListener('statechange', handler)
+    return () => {
+      this.context.removeEventListener('statechange', handler)
+    }
+  }
 }

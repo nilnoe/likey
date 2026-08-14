@@ -25,4 +25,6 @@ export interface PlayerBackend {
   decode(data: ArrayBuffer): Promise<DecodedBuffer>
   createSource(buffer: DecodedBuffer, onEnded: () => void): SourceHandle
   setVolume(volume: number): void
+  /** 上下文状态变化（running/suspended/interrupted/closed）；返回退订函数。 */
+  onStateChange?(callback: (state: string) => void): () => void
 }

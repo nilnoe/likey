@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { PlayerCore, clamp, describeError } from './PlayerCore'
+import { PlayerCore, clamp, describeError, pickCacheCapacity } from './PlayerCore'
 import type { DecodedBuffer, PlayerBackend, SourceHandle } from './PlayerBackend'
 
 class FakeSource implements SourceHandle {
@@ -93,6 +93,16 @@ describe('clamp / describeError', () => {
   it('describes errors', () => {
     expect(describeError(new Error('boom'))).toBe('boom')
     expect(describeError('plain')).toBe('plain')
+  })
+})
+
+describe('pickCacheCapacity', () => {
+  it('drops to 1 on low-memory devices', () => {
+    expect(pickCacheCapacity(undefined)).toBe(2)
+    expect(pickCacheCapacity(2)).toBe(1)
+    expect(pickCacheCapacity(3.5)).toBe(1)
+    expect(pickCacheCapacity(4)).toBe(2)
+    expect(pickCacheCapacity(16)).toBe(2)
   })
 })
 
@@ -245,5 +255,101 @@ describe('PlayerCore', () => {
     expect(backend.volume).toBe(1)
     core.setVolume(-1)
     expect(backend.volume).toBe(0)
+  })
+})
+
+/** 支持上下文状态变化（挂起/恢复）的 fake 后端。 */
+class StatefulFakeBackend extends FakeBackend {
+  state: 'running' | 'suspended' = 'running'
+  private stateCallbacks: Array<(state: string) => void> = []
+
+  onStateChange(callback: (state: string) => void): () => void {
+    this.stateCallbacks.push(callback)
+    return () => {
+      this.stateCallbacks = this.stateCallbacks.filter((cb) => cb !== callback)
+    }
+  }
+
+  emitState(state: string): void {
+    this.state = state as 'running' | 'suspended'
+    for (const cb of this.stateCallbacks) {
+      cb(state)
+    }
+  }
+
+  get context() {
+    return {
+      currentTime: this.now,
+      sampleRate: 44100,
+      resume: async (): Promise<void> => {
+        this.resumeCalls += 1
+        if (this.state === 'suspended') {
+          this.emitState('running') // 真实 AudioContext.resume 会触发 statechange
+        }
+      },
+    }
+  }
+}
+
+/** resume 可控挂起的 fake 后端（模拟系统自行恢复场景）。 */
+class DeferredResumeFakeBackend extends StatefulFakeBackend {
+  resumeResolver: (() => void) | null = null
+
+  get context() {
+    return {
+      currentTime: this.now,
+      sampleRate: 44100,
+      resume: (): Promise<void> => {
+        this.resumeCalls += 1
+        return new Promise<void>((resolve) => {
+          this.resumeResolver = resolve
+        })
+      },
+    }
+  }
+}
+
+describe('PlayerCore 上下文挂起恢复', () => {
+  it('suspension during playback freezes position and rebuilds after resume', async () => {
+    const backend = new StatefulFakeBackend()
+    const core = await loadedCore(backend)
+    await core.play()
+    backend.now = 3
+    backend.emitState('suspended')
+    expect(backend.sources[0]?.stopped).toBe(true) // 旧源已停
+    expect(core.getPosition()).toBeCloseTo(3) // 位置冻结
+    expect(core.getStatus().kind).toBe('playing')
+    backend.now = 5
+    expect(backend.sources[1]?.started).toEqual([3]) // 按冻结位置重建
+    expect(core.getPosition()).toBeCloseTo(5)
+  })
+
+  it('suspension while paused is ignored', async () => {
+    const backend = new StatefulFakeBackend()
+    const core = await loadedCore(backend)
+    core.seek(2)
+    backend.emitState('suspended')
+    expect(backend.sources).toHaveLength(0)
+    expect(core.getStatus()).toMatchObject({ kind: 'ready' })
+    expect(backend.resumeCalls).toBe(0)
+  })
+
+  it('running event rebuilds source when missing (external resume)', async () => {
+    const backend = new DeferredResumeFakeBackend()
+    const core = await loadedCore(backend)
+    const playPromise = core.play()
+    backend.resumeResolver?.() // 完成首次 resume
+    await playPromise
+    expect(core.getStatus().kind).toBe('playing')
+    backend.now = 2
+    backend.emitState('suspended') // 恢复流程挂起在 resume，源已同步停止
+    expect(backend.sources[0]?.stopped).toBe(true)
+    backend.emitState('running') // 系统自行恢复 → running 分支重建
+    expect(backend.sources[1]?.started).toEqual([2])
+    backend.now = 4
+    expect(core.getPosition()).toBeCloseTo(4)
+    backend.resumeResolver?.() // 迟到的 resume 完成 → 因源已存在不再重建
+    await Promise.resolve()
+    expect(backend.sources).toHaveLength(2)
   })
 })

@@ -56,6 +56,9 @@ function makeFakeGraph(): FakeGraph {
   }
   const context: Record<string, unknown> = {
     currentTime: 1.25,
+    state: 'running',
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
     createAnalyser: () => analyser,
     createGain: () => gain,
     createBufferSource: () => {
@@ -107,5 +110,18 @@ describe('WebAudioBackend', () => {
     const backend = new WebAudioBackend(context as unknown as AudioContext)
     backend.setVolume(0.5)
     expect(gain.gain.setTargetAtTime).toHaveBeenCalledWith(0.5, 1.25, 0.02)
+  })
+
+  it('onStateChange forwards context statechange with unsubscribe', () => {
+    const { context } = makeFakeGraph()
+    const backend = new WebAudioBackend(context as unknown as AudioContext)
+    const callback = vi.fn()
+    const unsubscribe = backend.onStateChange(callback)
+    const addCalls = (context.addEventListener as ReturnType<typeof vi.fn>).mock.calls
+    const handler = addCalls[0]?.[1] as () => void
+    handler()
+    expect(callback).toHaveBeenCalledWith('running')
+    unsubscribe()
+    expect(context.removeEventListener).toHaveBeenCalledWith('statechange', handler)
   })
 })

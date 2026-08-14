@@ -25,19 +25,26 @@ export function describeError(error: unknown): string {
   return String(error)
 }
 
+/** 依据设备内存选缓存容量：低内存（<4GB）降为 1，避免解码峰值压力。 */
+export function pickCacheCapacity(deviceMemoryGB: number | undefined): number {
+  if (deviceMemoryGB === undefined) return 2
+  return deviceMemoryGB < 4 ? 1 : 2
+}
+
 interface ActiveSource {
   readonly handle: SourceHandle
   manualStop: boolean
 }
 
 export interface PlayerCoreOptions {
-  /** 解码缓冲缓存（默认 LRU 容量 2 ≈ 84MB 上限）。 */
+  /** 解码缓冲缓存（默认容量按 deviceMemory 自适应，上限 2 ≈ 84MB）。 */
   readonly cache?: BufferCache<DecodedBuffer>
 }
 
 /**
  * 播放内核（纯 TS，无 DOM/React 依赖）。
  * 时间基：一切时间由 backend.context.currentTime 推导（单一音频时钟）。
+ * 上下文被系统挂起（App Nap/系统策略）时自动记录位置并尝试恢复重建。
  */
 export class PlayerCore {
   private status: PlayerStatus = { kind: 'idle' }
@@ -52,7 +59,16 @@ export class PlayerCore {
 
   constructor(backend: PlayerBackend, options: PlayerCoreOptions = {}) {
     this.backend = backend
-    this.cache = options.cache ?? new BufferCache<DecodedBuffer>(2)
+    // deviceMemory 为非标准字段，TS6 lib.dom 未收录 → 结构收窄访问
+    const nav =
+      typeof navigator !== 'undefined'
+        ? (navigator as Navigator & { deviceMemory?: number })
+        : undefined
+    this.cache =
+      options.cache ?? new BufferCache<DecodedBuffer>(pickCacheCapacity(nav?.deviceMemory))
+    backend.onStateChange?.((state) => {
+      void this.handleContextState(state)
+    })
   }
 
   getStatus(): PlayerStatus {
@@ -183,6 +199,35 @@ export class PlayerCore {
     source.manualStop = true
     this.source = null
     source.handle.stop()
+  }
+
+  /**
+   * 上下文状态变化处理：
+   * - running 且源缺失（系统自行恢复的场景）→ 按 startOffset 重建源
+   * - 被挂起/中断 → 冻结位置、停源、resume 后重建；恢复失败转暂停态
+   */
+  private async handleContextState(state: string): Promise<void> {
+    if (state === 'running') {
+      if (this.status.kind === 'playing' && this.source === null) {
+        this.createSource()
+        this.startedAt = this.backend.context.currentTime
+      }
+      return
+    }
+    if (this.status.kind !== 'playing') return
+    this.startOffset = this.getPosition()
+    this.stopSource()
+    try {
+      await this.backend.context.resume()
+      if (this.status.kind !== 'playing' || this.source !== null) return
+      this.createSource()
+      this.startedAt = this.backend.context.currentTime
+    } catch {
+      const trackName = this.status.kind === 'playing' ? this.status.trackName : null
+      if (trackName !== null) {
+        this.setStatus({ kind: 'ready', trackName, paused: true })
+      }
+    }
   }
 
   private setStatus(status: PlayerStatus): void {
