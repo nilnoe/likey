@@ -42,7 +42,7 @@ interface FakeCtx {
   canvas: { width: number; height: number }
   fillStyle: string
   clearRect(): void
-  fillRect(): void
+  fillRect(x: number, y: number, w: number, h: number): void
   beginPath(): void
   roundRect(x: number, y: number, w: number, h: number, r: number): void
   fill(): void
@@ -74,8 +74,8 @@ function makeFakeCtx(): { ctx: FakeCtx; calls: string[] } {
     clearRect: (): void => {
       calls.push('clearRect')
     },
-    fillRect: (): void => {
-      calls.push('fillRect')
+    fillRect: (x: number, y: number, w: number, h: number): void => {
+      calls.push(`fillRect(${x.toFixed(2)},${y.toFixed(2)},${w.toFixed(2)},${h.toFixed(2)})`)
     },
     beginPath: (): void => {
       calls.push('beginPath')
@@ -164,7 +164,7 @@ describe('SpectrumBarRenderer', () => {
     expect(calls).toContain('createLinearGradient')
     // 四象限镜像：4 柱 × 4 象限 × 2 帧 = 32 圆角柱；峰值线 4 柱 × 4 象限 × 2 帧 = 32 条
     expect(calls.filter((c) => c.startsWith('roundRect'))).toHaveLength(32)
-    expect(calls.filter((c) => c === 'fillRect')).toHaveLength(32)
+    expect(calls.filter((c) => c.startsWith('fillRect'))).toHaveLength(32)
   })
 
   it('mirrors bass toward the center (Q1/Q2 and Q3/Q4 swapped)', () => {
@@ -217,8 +217,8 @@ describe('SpectrumBarRenderer', () => {
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.render(makeFrame([1, 0.5]), 0)
     expect(calls).not.toContain('roundRect')
-    expect(calls).toContain('fillRect')
-    expect(calls.filter((c) => c === 'fillRect')).toHaveLength(2)
+    expect(calls.some((c) => c.startsWith('fillRect'))).toBe(true)
+    expect(calls.filter((c) => c.startsWith('fillRect'))).toHaveLength(2)
   })
 
   it('adapts to frame bar count changes', () => {
@@ -265,7 +265,7 @@ describe('SpectrumBarRenderer', () => {
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.setStyle({ barCount: 6 })
     renderer.render(makeFrame([0.1, 0.2, 0.3, 0.4, 0.5, 0.6]), 0)
-    expect(calls.filter((c) => c === 'fillRect').length).toBeGreaterThanOrEqual(6)
+    expect(calls.filter((c) => c.startsWith('fillRect')).length).toBeGreaterThanOrEqual(6)
   })
 
   it('liquid mode draws seamless arc silhouettes with surface rims', () => {
@@ -275,7 +275,7 @@ describe('SpectrumBarRenderer', () => {
     renderer.render(makeFrame([0.5, 0.25]), 0)
     // 液体模式不用柱子/峰值线，改用连续弧面路径
     expect(calls).not.toContain('roundRect')
-    expect(calls).not.toContain('fillRect')
+    expect(calls.some((c) => c.startsWith('fillRect'))).toBe(false)
     // 顶面 + 底面各一条剪影；每条弧链画两遍（填充 + 高光描边）→ 2×2×2×2 = 16 弧
     expect(calls.filter((c) => c === 'closePath')).toHaveLength(2)
     expect(calls.filter((c) => c.startsWith('arc'))).toHaveLength(16)
@@ -314,7 +314,7 @@ describe('SpectrumBarRenderer', () => {
     renderer.render(makeFrame([0.5, 0.25, 0.75, 0]), 0)
     // 4 柱 → 2 根合并宽柱 × 4 象限 = 8 根；峰值线同样 8 条
     expect(calls.filter((c) => c.startsWith('roundRect'))).toHaveLength(8)
-    expect(calls.filter((c) => c === 'fillRect')).toHaveLength(8)
+    expect(calls.filter((c) => c.startsWith('fillRect'))).toHaveLength(8)
     const bars = calls.filter((c) => c.startsWith('roundRect'))
     // slot = 300/4 = 75, barWidth = 75 - 9 = 66, radius = 33（胶囊全圆角）
     expect(bars[0]).toBe('roundRect(75.0,37.5,33.0)') // i=0 合并柱 (max(0.5,0.25)=0.5) 贴中线
@@ -328,7 +328,7 @@ describe('SpectrumBarRenderer', () => {
     renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
     renderer.render(makeFrame([0.5, 0.25, 0.75, 0]), 0)
     // 单排：2 根合并矩形柱 + 2 条峰值线 = 4 次 fillRect（无镜像/倒影的 4 象限放大）
-    expect(calls.filter((c) => c === 'fillRect')).toHaveLength(4)
+    expect(calls.filter((c) => c.startsWith('fillRect'))).toHaveLength(4)
     // 纯矩形：无圆角、无液体弧面
     expect(calls).not.toContain('roundRect')
     expect(calls).not.toContain('closePath')
@@ -336,5 +336,22 @@ describe('SpectrumBarRenderer', () => {
     // 纯净深绿纯色填充（非渐变）
     expect(calls).toContain('fillStyle(#166534)')
     expect(calls).not.toContain('fillStyle(#22d3ee)')
+  })
+
+  it('bands mode stacks horizontal strips with low frequency at the bottom', () => {
+    const { ctx, calls } = makeFakeCtx()
+    const renderer = new SpectrumBarRenderer({ barCount: 4, mode: 'bands' })
+    renderer.mount(makeFakeCanvas(ctx) as unknown as HTMLCanvasElement)
+    renderer.render(makeFrame([0.5, 0.25, 0.75, 0]), 0)
+    const rects = calls.filter((c) => c.startsWith('fillRect'))
+    // 4 条横向带（无峰值线/无镜像放大），自左向右伸缩
+    expect(rects).toHaveLength(4)
+    // stripHeight = 150/4 = 37.5, gap = 1.5, h = 36；低频 i=0 在最底部
+    expect(rects[0]).toBe('fillRect(0.00,113.25,150.00,36.00)') // 低频带：宽 0.5×300
+    expect(rects[1]).toBe('fillRect(0.00,75.75,75.00,36.00)') // 中频带
+    expect(rects[2]).toBe('fillRect(0.00,38.25,225.00,36.00)') // 高频带：宽 0.75×300
+    expect(rects[3]).toBe('fillRect(0.00,0.75,0.50,36.00)') // 顶部静音带保底 0.5px
+    expect(calls).not.toContain('roundRect')
+    expect(calls).not.toContain('closePath')
   })
 })

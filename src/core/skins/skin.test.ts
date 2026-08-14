@@ -73,6 +73,15 @@ describe('parseSkin', () => {
     if (greenResult.ok) {
       expect(greenResult.skin.spectrumStyle.mode).toBe('green')
     }
+    const bands = {
+      ...VALID_SKIN,
+      spectrumStyle: { ...VALID_SKIN.spectrumStyle, mode: 'bands' },
+    }
+    const bandsResult = parseSkin(JSON.stringify(bands))
+    expect(bandsResult.ok).toBe(true)
+    if (bandsResult.ok) {
+      expect(bandsResult.skin.spectrumStyle.mode).toBe('bands')
+    }
   })
 
   it('rejects invalid JSON', () => {

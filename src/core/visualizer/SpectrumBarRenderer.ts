@@ -121,6 +121,8 @@ export class SpectrumBarRenderer {
       this.drawChunky(width, height)
     } else if (this.style.mode === 'green') {
       this.drawGreen(width, height)
+    } else if (this.style.mode === 'bands') {
+      this.drawBands(width, height)
     } else {
       this.drawBars(width, height)
     }
@@ -185,6 +187,28 @@ export class SpectrumBarRenderer {
         ctx.fillStyle = PEAK_COLOR
         ctx.fillRect(slot * i, height - peakY - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT)
       }
+    }
+  }
+
+  /**
+   * 横向频谱带模式（千千静听原版）：每个频段一条横向长条上下堆叠，
+   * 低频在最底部、高频在顶部，自左向右伸缩。单排、无镜像/倒影/峰值线。
+   */
+  private drawBands(width: number, height: number): void {
+    const ctx = this.ctx
+    if (ctx === null) return
+    const count = this.values.length
+    const stripHeight = height / count
+    const gap = Math.min(1.5, Math.max(0.5, stripHeight * 0.18))
+    const h = Math.max(1, stripHeight - gap)
+    const pulseScale = 1 + 0.05 * this.pulse
+    const primary = this.ensureGradient(height)
+    ctx.fillStyle = primary
+    for (let i = 0; i < count; i++) {
+      const value = this.values[i] ?? 0
+      const w = Math.max(0.5, value * width * pulseScale)
+      const y = height - (i + 1) * stripHeight + gap / 2
+      ctx.fillRect(0, y, w, h)
     }
   }
 

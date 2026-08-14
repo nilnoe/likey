@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type VisualizerMode = 'bars' | 'liquid' | 'chunky' | 'green'
+export type VisualizerMode = 'bars' | 'liquid' | 'chunky' | 'green' | 'bands'
 
 interface VisualizerModeState {
   readonly mode: VisualizerMode
