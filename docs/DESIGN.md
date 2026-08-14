@@ -780,6 +780,13 @@ interface QueueStoreState {
 - 用户音源脚本持久化到 `tauri-plugin-store`
 - 安全边界：脚本无 DOM 网络特权（fetch 全部代理）、调用带超时、结果强校验、脚本崩溃不影响宿主
 
+### 19.1 音源下载（离线缓存）
+
+- Rust `download_file`：reqwest(rustls) 流式下载到 `app_data_dir/downloads/`，进度经 Channel 推送，文件已存在即复用
+- 文件名安全清洗（保留中文/字母数字/空格，路径字符转义）+ 扩展名推断（Content-Type → URL 路径 → mp3 兜底）；`delete_download` 校验路径必须位于下载目录内
+- 下载列表持久化（plugin-store）；离线播放走资产协议（`convertFileSrc`，scope 含 `$APPDATA/**`），与在线播放共用解码链
+- 下载文件名按 `{sourceId}-{songmid}` 生成，重复下载幂等
+
 ---
 
 _本文档为讨论稿，Spike（S0）结果（尤其 WKWebView 解码能力）将回填 §14 并可能调整 §4.4 的降级链范围。_
