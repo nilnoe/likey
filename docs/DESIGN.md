@@ -776,6 +776,7 @@ interface QueueStoreState {
   - `example.js`：本地音乐库示例源（离线验证全链路）
   - 真实可用性验证：curl 端到端（搜索/签名跳转/200 audio/mpeg）+ WKWebView 探测 10/10（含 Audius 真实网络往返）
   - **Internet Archive 弃用结论**（三种路径实测 401：无 UA / 浏览器 UA / 匿名 cookie 会话）：下载端点要求登录会话，reqwest 无 cookie 持久化，不适合免密钥直链源 → 由 iTunes 试听源替代（覆盖主流曲库 30s 片段）
+  - **HTTP 插件 scope 必须显式配置**（capabilities: `http:default` + `allow: ["https://*", "http://*"]`）：默认权限允许 fetch 操作但拒绝一切源，漏配表现为「搜索无结果/取流失败」——已修复并有插件单测背书（`http://*` 匹配任意主机任意路径）
 - 用户音源脚本持久化到 `tauri-plugin-store`
 - 安全边界：脚本无 DOM 网络特权（fetch 全部代理）、调用带超时、结果强校验、脚本崩溃不影响宿主
 
