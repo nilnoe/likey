@@ -8,14 +8,51 @@ use crate::models::DownloadProgress;
 
 const BROWSER_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
+/// 下载目录：~/Music/Mymusic（用户可见，随音乐生态一起备份）。
+pub fn mymusic_dir(home: &Path) -> PathBuf {
+    home.join("Music").join("Mymusic")
+}
+
 fn downloads_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("downloads");
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    let dir = mymusic_dir(&home);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    migrate_legacy(app, &dir);
     Ok(dir)
+}
+
+/// 一次性迁移：旧应用数据目录下的下载文件搬到 ~/Music/Mymusic。
+fn migrate_legacy(app: &tauri::AppHandle, new_dir: &Path) {
+    let Ok(legacy) = app.path().app_data_dir() else {
+        return;
+    };
+    let legacy = legacy.join("downloads");
+    if !legacy.is_dir() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(&legacy) {
+        for entry in entries.flatten() {
+            let src = entry.path();
+            if !src.is_file() {
+                continue;
+            }
+            let Some(name) = src.file_name() else {
+                continue;
+            };
+            let dst = new_dir.join(name);
+            if !dst.exists() {
+                let _ = std::fs::rename(&src, &dst);
+            }
+        }
+    }
+    // 仅当目录已空时移除成功
+    let _ = std::fs::remove_dir(&legacy);
+}
+
+/// 返回当前下载目录路径（前端迁移/展示用）。
+#[tauri::command]
+pub fn get_downloads_dir(app: tauri::AppHandle) -> Result<String, String> {
+    downloads_dir(&app).map(|dir| dir.to_string_lossy().to_string())
 }
 
 /// 安全文件名：仅保留字母数字、中文、空格、`-_.()`，其余替换为 `_`。
@@ -133,6 +170,14 @@ pub fn delete_download(app: tauri::AppHandle, path: String) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mymusic_dir_joins_home() {
+        assert_eq!(
+            mymusic_dir(Path::new("/Users/mike")),
+            PathBuf::from("/Users/mike/Music/Mymusic")
+        );
+    }
 
     #[test]
     fn sanitize_keeps_safe_chars_and_chinese() {

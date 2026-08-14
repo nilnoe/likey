@@ -59,3 +59,8 @@ export async function downloadFile(
 export async function deleteDownload(path: string): Promise<void> {
   await invoke('delete_download', { path })
 }
+
+/** 当前下载目录路径（~/Music/Mymusic；前端路径迁移/展示用）。 */
+export async function getDownloadsDir(): Promise<string> {
+  return invoke<string>('get_downloads_dir')
+}

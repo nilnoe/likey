@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { fixLegacyDownloadPath } from '../core/library/downloads'
+import { getDownloadsDir } from '../features/library/tauriBridge'
 import type { PersistedDownload } from '../features/player/persistence'
 import { loadDownloads, saveDownloads } from '../features/player/persistence'
 
@@ -21,7 +23,14 @@ export const useDownloadsStore = create<DownloadsStoreState>((set, get) => ({
 
   restore: async () => {
     if (get().loaded) return
-    const items = await loadDownloads()
+    let items = await loadDownloads()
+    // 旧下载目录（应用数据目录）→ ~/Music/Mymusic 路径修复
+    try {
+      const dir = await getDownloadsDir()
+      items = items.map((item) => ({ ...item, path: fixLegacyDownloadPath(item.path, dir) }))
+    } catch {
+      // 纯 Web 环境无 Tauri IPC：保持原路径
+    }
     set({ items, loaded: true })
   },
 

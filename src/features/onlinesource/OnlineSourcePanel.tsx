@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { buildDownloadFileName } from '../../core/library/downloads'
 import {
   MUSIC_QUALITIES,
   type MusicQuality,
@@ -209,8 +210,11 @@ export function OnlineSourcePanel() {
         setHint('音源未返回可下载地址')
         return
       }
-      const path = await downloadFile(url, `${activeId}-${song.songmid}`, (done, total) =>
-        setDownloadProgress({ done, total }),
+      // 命名规范：作者 - 歌名（Rust 侧做安全清洗与扩展名推断）
+      const path = await downloadFile(
+        url,
+        buildDownloadFileName(song.singer, song.name),
+        (done, total) => setDownloadProgress({ done, total }),
       )
       addDownload({
         id: `${activeId}:${song.songmid}`,
