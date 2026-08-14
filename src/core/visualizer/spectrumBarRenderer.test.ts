@@ -346,7 +346,7 @@ describe('SpectrumBarRenderer', () => {
     expect(calls).not.toContain('closePath')
     expect(calls).not.toContain('stroke')
     // 纯净深绿纯色填充（非渐变）
-    expect(calls).toContain('fillStyle(#166534)')
+    expect(calls).toContain('fillStyle(#0b6e4f)')
     expect(calls).not.toContain('fillStyle(#22d3ee)')
   })
 

@@ -20,8 +20,8 @@ const FADED_PEAK_COLOR = 'rgba(255, 255, 255, 0.35)'
 const SURFACE_RIM_TOP = 'rgba(255, 255, 255, 0.4)'
 const SURFACE_RIM_BOTTOM = 'rgba(255, 255, 255, 0.22)'
 const SURFACE_LINE_WIDTH = 1.5
-/** 深绿电平表模式：纯净深绿纯色填充。 */
-const GREEN_BAR = '#166534'
+/** 深绿电平表模式：纯净深绿纯色填充（深翠绿，带蓝色底调更显高级）。 */
+const GREEN_BAR = '#0b6e4f'
 /**
  * 律动整体幅度系数：柱高/液面统一缩放到 90%，
  * 即使节拍脉冲顶到 1.05 也不会超出面板边缘（比例与律动逻辑不变）。
