@@ -38,6 +38,8 @@ export class SourceRuntime {
   private status: SourceRuntimeStatus = 'idle'
   private statusListeners = new Set<(status: SourceRuntimeStatus, error?: string) => void>()
   private pluginFetch: PluginFetch | null = null
+  /** 加载代次：每次 load/dispose 递增；旧代的异步续作与定时器一律失效。 */
+  private loadEpoch = 0
   private readonly handleMessage = (event: MessageEvent): void => {
     if (this.iframe === null || event.source !== this.iframe.contentWindow) return
     if (!isSourceRuntimeMessage(event.data)) return
@@ -86,12 +88,14 @@ export class SourceRuntime {
     return this.status
   }
 
-  /** 加载音源脚本（替换旧运行时）。 */
+  /** 加载音源脚本（替换旧运行时）。加载代次机制保证重叠 load 互不干扰。 */
   async load(code: string): Promise<void> {
     this.dispose()
+    const epoch = this.loadEpoch
     this.setStatus('loading')
     try {
       this.pluginFetch = await this.loadPluginFetch()
+      if (epoch !== this.loadEpoch) return // 已被新加载取代
       // sandbox="allow-scripts"（不透明源）下 blob URL 不执行脚本（真实 WebKit 实测），
       // 必须用 srcdoc 内联；用户代码中的 </script> 需转义防止逃逸
       const escapedCode = escapeScriptCode(code)
@@ -111,23 +115,37 @@ export class SourceRuntime {
       window.addEventListener('message', this.handleMessage)
 
       await new Promise<void>((resolve, reject) => {
+        let settled = false
+        const settle = (ok: boolean, error?: Error): void => {
+          if (settled) return
+          settled = true
+          if (ok) resolve()
+          else reject(error ?? new Error('脚本初始化失败'))
+        }
+        let state: { resolve: () => void; reject: (e: Error) => void } | null = null
         const timer = window.setTimeout(() => {
-          this.readyState = null
-          reject(new Error('脚本初始化超时（10s）'))
+          // 身份校验：仅当本代仍是当前就绪等待者才生效（旧代遗留定时器静默失效）
+          if (this.readyState === state && state !== null) {
+            this.readyState = null
+            settle(false, new Error('脚本初始化超时（10s）'))
+          }
         }, READY_TIMEOUT_MS)
-        this.readyState = {
+        state = {
           resolve: () => {
             window.clearTimeout(timer)
-            resolve()
+            settle(true)
           },
           reject: (error) => {
             window.clearTimeout(timer)
-            reject(error)
+            settle(false, error)
           },
         }
+        this.readyState = state
       })
+      if (epoch !== this.loadEpoch) return
       this.setStatus('ready')
     } catch (error: unknown) {
+      if (epoch !== this.loadEpoch) return // 被取代的加载不污染状态
       this.setStatus('error', error instanceof Error ? error.message : String(error))
       throw error
     }
@@ -151,14 +169,17 @@ export class SourceRuntime {
   }
 
   dispose(): void {
+    this.loadEpoch += 1 // 在途 load 全部失效
     window.removeEventListener('message', this.handleMessage)
     for (const pending of this.pendingCalls.values()) {
       window.clearTimeout(pending.timer)
     }
     this.pendingCalls.clear()
+    const ready = this.readyState
+    this.readyState = null
+    ready?.reject(new Error('加载已取消')) // 让旧 load 的 await 正常收尾（其代次已失效，静默）
     this.iframe?.remove()
     this.iframe = null
-    this.readyState = null
     this.status = 'idle'
   }
 
