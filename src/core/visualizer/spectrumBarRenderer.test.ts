@@ -104,9 +104,9 @@ describe('SpectrumBarRenderer', () => {
     renderer.render(makeFrame([0.4, 0.2, 0.7, 0]), 8) // beat 帧
     expect(calls).toContain('clearRect')
     expect(calls).toContain('createLinearGradient')
-    // 镜像 4 柱 × 2 + 峰值线 8 条
-    expect(calls.filter((c) => c === 'roundRect')).toHaveLength(16)
-    expect(calls.filter((c) => c === 'fillRect')).toHaveLength(16)
+    // 四象限镜像：4 柱 × 4 象限 × 2 帧 = 32 圆角柱；峰值线 4 柱 × 4 象限 × 2 帧 = 32 条
+    expect(calls.filter((c) => c === 'roundRect')).toHaveLength(32)
+    expect(calls.filter((c) => c === 'fillRect')).toHaveLength(32)
   })
 
   it('renders non-mirror rectangular bars without peaks when disabled', () => {

@@ -7,9 +7,11 @@ import {
   updatePeaks,
   type SpectrumStyle,
 } from './SpectrumStyle'
+import { complementaryHex } from './color'
 
 const PEAK_LINE_HEIGHT = 2
 const PEAK_COLOR = 'rgba(255, 255, 255, 0.75)'
+const COMPLEMENT_PEAK_COLOR = 'rgba(255, 255, 255, 0.45)'
 
 /**
  * 千千静听风频谱柱渲染器（Canvas 2D）。
@@ -23,6 +25,7 @@ export class SpectrumBarRenderer {
   private peaks: Float32Array
   private pulse = 0
   private gradient: CanvasGradient | null = null
+  private complementGradient: CanvasGradient | null = null
 
   constructor(style: Partial<SpectrumStyle> = {}) {
     this.style = { ...DEFAULT_SPECTRUM_STYLE, ...style }
@@ -47,6 +50,7 @@ export class SpectrumBarRenderer {
       this.peaks = new Float32Array(this.style.barCount)
     }
     this.gradient = null
+    this.complementGradient = null
   }
 
   /** 依据 CSS 尺寸 × devicePixelRatio 重建画布物理尺寸。 */
@@ -60,6 +64,7 @@ export class SpectrumBarRenderer {
     canvas.width = Math.max(1, Math.round(rect.width * dpr))
     canvas.height = Math.max(1, Math.round(rect.height * dpr))
     this.gradient = null
+    this.complementGradient = null
   }
 
   render(frame: SpectrumFrame, beatStrength: number): void {
@@ -91,32 +96,43 @@ export class SpectrumBarRenderer {
     const pulseScale = 1 + 0.05 * this.pulse
     const baseY = height / 2
     const halfHeight = mirror ? height / 2 : height
+    const primary = this.ensureGradient(height)
+    const complementary = mirror ? this.ensureComplementGradient(height) : primary
 
-    ctx.fillStyle = this.ensureGradient(height)
     for (let i = 0; i < count; i++) {
       const value = this.values[i] ?? 0
       const barHeight = Math.max(0.5, value * halfHeight * pulseScale)
       if (mirror) {
-        this.drawBar(slot * i, baseY - barHeight, barWidth, barHeight)
-        this.drawBar(slot * (total - i - 1), baseY, barWidth, barHeight)
+        // 四象限补全：Q2/Q4 原渐变，Q1/Q3 互补色（原为空的高频象限补满）
+        ctx.fillStyle = primary
+        this.drawBar(slot * i, baseY - barHeight, barWidth, barHeight) // Q2（左上）
+        this.drawBar(slot * (total - i - 1), baseY, barWidth, barHeight) // Q4（右下）
+        ctx.fillStyle = complementary
+        this.drawBar(slot * (total - i - 1), baseY - barHeight, barWidth, barHeight) // Q1（右上）
+        this.drawBar(slot * i, baseY, barWidth, barHeight) // Q3（左下）
       } else {
+        ctx.fillStyle = primary
         this.drawBar(slot * i, height - barHeight, barWidth, barHeight)
       }
     }
 
     if (this.style.peakHold) {
-      ctx.fillStyle = PEAK_COLOR
       for (let i = 0; i < count; i++) {
         const peakHeight = (this.peaks[i] ?? 0) * halfHeight * pulseScale
         if (mirror) {
-          ctx.fillRect(slot * i, baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT)
+          ctx.fillStyle = PEAK_COLOR
+          ctx.fillRect(slot * i, baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q2
           ctx.fillRect(
             slot * (total - i - 1),
             baseY + peakHeight - PEAK_LINE_HEIGHT,
             barWidth,
             PEAK_LINE_HEIGHT,
-          )
+          ) // Q4
+          ctx.fillStyle = COMPLEMENT_PEAK_COLOR
+          ctx.fillRect(slot * (total - i - 1), baseY - peakHeight, barWidth, PEAK_LINE_HEIGHT) // Q1
+          ctx.fillRect(slot * i, baseY + peakHeight - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT) // Q3
         } else {
+          ctx.fillStyle = PEAK_COLOR
           ctx.fillRect(slot * i, height - peakHeight - PEAK_LINE_HEIGHT, barWidth, PEAK_LINE_HEIGHT)
         }
       }
@@ -144,5 +160,19 @@ export class SpectrumBarRenderer {
       this.gradient = gradient
     }
     return this.gradient ?? this.style.gradient[0] ?? '#22d3ee'
+  }
+
+  /** 互补色渐变（Q1/Q3 象限用）：主渐变两端的互补色。 */
+  private ensureComplementGradient(height: number): string | CanvasGradient {
+    if (this.complementGradient === null && this.ctx !== null) {
+      const [c1, c2] = this.style.gradient
+      const comp1 = complementaryHex(c1 ?? '#22d3ee') ?? '#ff5c8a'
+      const comp2 = complementaryHex(c2 ?? '#a855f7') ?? '#57aa08'
+      const gradient = this.ctx.createLinearGradient(0, 0, 0, height)
+      gradient.addColorStop(0, comp1)
+      gradient.addColorStop(1, comp2)
+      this.complementGradient = gradient
+    }
+    return this.complementGradient ?? this.style.gradient[0] ?? '#22d3ee'
   }
 }
