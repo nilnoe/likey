@@ -353,8 +353,9 @@ fn ffmpeg_available() -> bool {
 /// m4a → mp3（ffmpeg/libmp3lame 192k）；成功后替换原文件。
 async fn transcode_to_mp3(path: &Path) -> Result<PathBuf, String> {
     let mp3_path = path.with_extension("mp3");
-    let tmp_path = path.with_extension("mp3.transcoding");
-    let status = tauri::async_runtime::spawn_blocking({
+    // 临时文件必须保留可识别的 .mp3 扩展名（ffmpeg 依扩展名推断输出容器）
+    let tmp_path = path.with_extension("transcoding.mp3");
+    let output = tauri::async_runtime::spawn_blocking({
         let input = path.to_path_buf();
         let tmp = tmp_path.clone();
         move || {
@@ -368,20 +369,24 @@ async fn transcode_to_mp3(path: &Path) -> Result<PathBuf, String> {
                     "libmp3lame",
                     "-b:a",
                     "192k",
+                    "-f",
+                    "mp3",
                     tmp.to_str().unwrap_or(""),
                 ])
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
+                .stderr(std::process::Stdio::piped())
+                .output()
         }
     })
     .await
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
-    if !status.success() {
+    if !output.status.success() {
         let _ = std::fs::remove_file(&tmp_path);
-        return Err("转码 mp3 失败（ffmpeg）".to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let last = stderr.lines().last().unwrap_or("未知错误");
+        return Err(format!("转码 mp3 失败（ffmpeg）: {last}"));
     }
     std::fs::remove_file(path).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp_path, &mp3_path).map_err(|e| e.to_string())?;
