@@ -781,6 +781,7 @@ interface QueueStoreState {
 - 内置音源（`public/sources/`，运行时经资产协议加载）：
   - **`youtube`（原生源，不经沙箱运行时）**：Rust 调 **yt-dlp sidecar**（`ytdl_search`/`ytdl_url` 命令）——把 YouTube 适配外包给维护最勤的开源 CLI，全曲库、无账号、零封号风险；取流强制 `bestaudio[ext=m4a]`（WKWebView 不支持 Opus/WebM，AAC 实测 206 audio/mp4）；yt-dlp 缺失时给出友好安装提示；标题启发式拆分「艺术家 - 曲名」（MV/Official/歌词版等标记不拆）
   - **YouTube 反爬（bot 检测）**：无 Cookie 请求可能被拦（"Sign in to confirm you're not a bot"）。音源面板可选「Cookie 来源」（Safari/Chrome/…，持久化），Rust 侧白名单校验后注入 `--cookies-from-browser <browser>`；命中 bot 错误且未配 Cookie 时错误信息自动追加操作指引。注意：Safari Cookie 需在 macOS 系统设置中授予 Likey「完全磁盘访问权限」，Chrome 读取会触发钥匙串授权。
+  - **请求降频**：`core/onlinesource/ytCache.ts` 会话级过期缓存（可注入时钟单测）——流地址 4h TTL（googlevideo 链接约 6h 有效）、搜索 10min TTL；反复重试不再重复打上游，降低风控限流概率。
   - `audius.js`：Audius 公开 API（免费开源音乐平台，无需密钥）——真实在线曲目全曲播放；流媒体 CDN 校验 User-Agent，经脚本 headers 透传（reqwest 无浏览器 header 限制）
   - `itunes.js`：iTunes Search API 试听源——主流曲库 30s 片段（平台限制）
   - `example.js`：本地音乐库示例源（离线验证全链路）

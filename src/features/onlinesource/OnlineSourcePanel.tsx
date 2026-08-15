@@ -13,6 +13,7 @@ import {
   ytdlSearch,
   ytdlUrl,
 } from '../library/tauriBridge'
+import { ExpiringCache, SEARCH_TTL_MS, STREAM_URL_TTL_MS } from '../../core/onlinesource/ytCache'
 import { useDownloadsStore } from '../../state/downloadsStore'
 import { useLibraryStore } from '../../state/libraryStore'
 import { useLyricOverrideStore } from '../../state/lyricOverrideStore'
@@ -39,6 +40,13 @@ const STATUS_LABEL: Record<SourceRuntimeStatus, string> = {
   ready: '就绪',
   error: '出错',
 }
+
+/**
+ * YouTube 请求降频缓存（会话级）：流地址 4h、搜索 10min 内不重复打上游，
+ * 降低被 YouTube 风控限流的概率。
+ */
+const streamUrlCache = new ExpiringCache<string>(STREAM_URL_TTL_MS)
+const searchCache = new ExpiringCache<readonly SourceSong[]>(SEARCH_TTL_MS)
 
 /**
  * 在线音源面板：管理 .js 音源（lx-music 兼容协议）、搜索、试听播放、歌词注入。
@@ -151,18 +159,24 @@ export function OnlineSourcePanel() {
     setHint(null)
     try {
       if (activeSource?.native === 'youtube') {
+        const cacheKey = `yt:${keyword.trim()}`
+        const cached = searchCache.get(cacheKey)
+        if (cached !== undefined) {
+          setResults(cached)
+          return
+        }
         const tracks = await ytdlSearch(keyword, 30, cookies)
-        setResults(
-          tracks.map((t) => ({
-            songmid: t.videoId,
-            name: t.title,
-            singer: t.artist,
-            album: '',
-            interval: t.duration,
-            img: t.thumbnail,
-            source: 'youtube',
-          })),
-        )
+        const mapped: readonly SourceSong[] = tracks.map((t) => ({
+          songmid: t.videoId,
+          name: t.title,
+          singer: t.artist,
+          album: '',
+          interval: t.duration,
+          img: t.thumbnail,
+          source: 'youtube',
+        }))
+        searchCache.set(cacheKey, mapped)
+        setResults(mapped)
       } else {
         const runtime = runtimeRef.current
         if (runtime === null || runtime.getStatus() !== 'ready') {
@@ -185,7 +199,11 @@ export function OnlineSourcePanel() {
     try {
       let url: string | null
       if (activeSource?.native === 'youtube') {
-        url = await ytdlUrl(song.songmid, cookies)
+        const cached = streamUrlCache.get(song.songmid)
+        url = cached ?? (await ytdlUrl(song.songmid, cookies))
+        if (cached === undefined) {
+          streamUrlCache.set(song.songmid, url)
+        }
       } else {
         const runtime = runtimeRef.current
         if (runtime === null) return
@@ -257,7 +275,11 @@ export function OnlineSourcePanel() {
       let url: string | null
       let lyrics: string | null = null
       if (activeSource?.native === 'youtube') {
-        url = await ytdlUrl(song.songmid, cookies)
+        const cached = streamUrlCache.get(song.songmid)
+        url = cached ?? (await ytdlUrl(song.songmid, cookies))
+        if (cached === undefined) {
+          streamUrlCache.set(song.songmid, url)
+        }
         // 歌词可选：字幕缺失不阻断下载
         try {
           lyrics = await ytdlLyrics(song.songmid, cookies)
