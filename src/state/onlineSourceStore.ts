@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import type { PersistedSource } from '../features/player/persistence'
-import { loadOnlineSources, saveOnlineSources } from '../features/player/persistence'
+import {
+  loadOnlineSources,
+  loadYoutubeCookies,
+  saveOnlineSources,
+  saveYoutubeCookies,
+} from '../features/player/persistence'
 
 export interface OnlineSource extends PersistedSource {
   readonly builtin: boolean
@@ -46,9 +51,12 @@ interface OnlineSourceStoreState {
   readonly sources: readonly OnlineSource[]
   readonly activeId: string
   readonly loaded: boolean
-  /** 启动时恢复用户音源。 */
+  /** YouTube 音源 Cookie 来源（浏览器名，'' = 无），防反爬拦截。 */
+  readonly youtubeCookies: string
+  /** 启动时恢复用户音源与 Cookie 设置。 */
   restore(): Promise<void>
   activate(id: string): void
+  setYoutubeCookies(name: string): void
   /** 导入 .js 音源；返回错误信息（null = 成功）。 */
   addSource(name: string, code: string): string | null
   removeSource(id: string): void
@@ -65,12 +73,15 @@ export const useOnlineSourceStore = create<OnlineSourceStoreState>((set, get) =>
   sources: BUILTIN_SOURCES,
   activeId: BUILTIN_SOURCES[0]?.id ?? 'audius',
   loaded: false,
+  youtubeCookies: '',
 
   restore: async () => {
     if (get().loaded) return
     const persisted = await loadOnlineSources()
+    const youtubeCookies = await loadYoutubeCookies()
     set({
       sources: [...get().sources, ...persisted.map((s) => ({ ...s, builtin: false }))],
+      youtubeCookies,
       loaded: true,
     })
   },
@@ -79,6 +90,11 @@ export const useOnlineSourceStore = create<OnlineSourceStoreState>((set, get) =>
     if (get().sources.some((s) => s.id === id)) {
       set({ activeId: id })
     }
+  },
+
+  setYoutubeCookies: (name) => {
+    set({ youtubeCookies: name })
+    void saveYoutubeCookies(name)
   },
 
   addSource: (name, code) => {

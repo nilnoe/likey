@@ -27,7 +27,7 @@ fn find_ytdl() -> Result<String, String> {
 }
 
 /// 执行 yt-dlp（参数数组直传，无 shell 注入面），带超时兜底。
-fn run_ytdl(args: &[&str], timeout: Duration) -> Result<String, String> {
+fn run_ytdl(args: &[String], timeout: Duration) -> Result<String, String> {
     let binary = find_ytdl()?;
     let mut child = std::process::Command::new(&binary)
         .args(args)
@@ -52,6 +52,43 @@ fn run_ytdl(args: &[&str], timeout: Duration) -> Result<String, String> {
             return Err("yt-dlp 超时".to_string());
         }
         std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// `--cookies-from-browser` 允许的浏览器白名单（防注入任意参数值）。
+const COOKIE_BROWSERS: &[&str] = &[
+    "safari", "chrome", "chromium", "firefox", "edge", "brave", "arc", "orca", "opera", "vivaldi",
+];
+
+/// 规范化 Cookie 来源：空/None → None（无 Cookie），白名单外报错。
+fn normalize_cookie_browser(cookies: Option<String>) -> Result<Option<String>, String> {
+    match cookies
+        .map(|c| c.trim().to_lowercase())
+        .filter(|c| !c.is_empty())
+    {
+        None => Ok(None),
+        Some(name) if COOKIE_BROWSERS.contains(&name.as_str()) => Ok(Some(name)),
+        Some(name) => Err(format!("不支持的 Cookie 浏览器: {name}")),
+    }
+}
+
+/// 基础参数前插入 `--cookies-from-browser <name>`（仅当有 Cookie 来源）。
+fn with_cookies(base: &[&str], cookies: Option<&str>) -> Vec<String> {
+    let mut args: Vec<String> = Vec::with_capacity(base.len() + 2);
+    if let Some(browser) = cookies {
+        args.push("--cookies-from-browser".to_string());
+        args.push(browser.to_string());
+    }
+    args.extend(base.iter().map(|s| (*s).to_string()));
+    args
+}
+
+/// 反爬拦截提示：未用 Cookie 且命中 YouTube bot 检测时追加操作指引。
+fn bot_hint(err: String, has_cookies: bool) -> String {
+    if !has_cookies && (err.contains("Sign in to confirm") || err.contains("not a bot")) {
+        format!("{err}（YouTube 反爬拦截：请将 Cookie 来源设为 Safari/Chrome 后重试）")
+    } else {
+        err
     }
 }
 
@@ -113,37 +150,53 @@ pub fn parse_ytdl_search(json: &str) -> Result<Vec<YtTrack>, String> {
     Ok(tracks)
 }
 
-/// YouTube 搜索（yt-dlp sidecar，无账号零风控风险）。
+/// YouTube 搜索（yt-dlp sidecar，可选浏览器 Cookie 防反爬）。
 #[tauri::command]
-pub async fn ytdl_search(query: String, limit: Option<u32>) -> Result<Vec<YtTrack>, String> {
+pub async fn ytdl_search(
+    query: String,
+    limit: Option<u32>,
+    cookies: Option<String>,
+) -> Result<Vec<YtTrack>, String> {
     let limit = limit.unwrap_or(20).clamp(1, 30);
+    let cookies = normalize_cookie_browser(cookies)?;
+    let has_cookies = cookies.is_some();
     tauri::async_runtime::spawn_blocking(move || {
         let spec = format!("ytsearch{limit}:{query}");
         let output = run_ytdl(
-            &["--flat-playlist", "-J", "--no-warnings", &spec],
+            &with_cookies(
+                &["--flat-playlist", "-J", "--no-warnings", &spec],
+                cookies.as_deref(),
+            ),
             SEARCH_TIMEOUT,
-        )?;
+        )
+        .map_err(|e| bot_hint(e, has_cookies))?;
         parse_ytdl_search(&output)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// 取流地址（强制 m4a/AAC——WKWebView 不支持 Opus/WebM）。
+/// 取流地址（强制 m4a/AAC——WKWebView 不支持 Opus/WebM；可选浏览器 Cookie）。
 #[tauri::command]
-pub async fn ytdl_url(video_id: String) -> Result<String, String> {
+pub async fn ytdl_url(video_id: String, cookies: Option<String>) -> Result<String, String> {
+    let cookies = normalize_cookie_browser(cookies)?;
+    let has_cookies = cookies.is_some();
     tauri::async_runtime::spawn_blocking(move || {
         let watch = format!("https://www.youtube.com/watch?v={video_id}");
         let output = run_ytdl(
-            &[
-                "-f",
-                "bestaudio[ext=m4a]/bestaudio",
-                "-g",
-                "--no-warnings",
-                &watch,
-            ],
+            &with_cookies(
+                &[
+                    "-f",
+                    "bestaudio[ext=m4a]/bestaudio",
+                    "-g",
+                    "--no-warnings",
+                    &watch,
+                ],
+                cookies.as_deref(),
+            ),
             URL_TIMEOUT,
-        )?;
+        )
+        .map_err(|e| bot_hint(e, has_cookies))?;
         output
             .lines()
             .next()
@@ -234,26 +287,33 @@ pub fn vtt_to_lrc(vtt: &str) -> String {
     out
 }
 
-/// YouTube 字幕歌词（yt-dlp 抓取 VTT → LRC；无字幕返回 None）。
+/// YouTube 字幕歌词（yt-dlp 抓取 VTT → LRC；无字幕返回 None；可选浏览器 Cookie）。
 #[tauri::command]
-pub async fn ytdl_lyrics(video_id: String) -> Result<Option<String>, String> {
+pub async fn ytdl_lyrics(
+    video_id: String,
+    cookies: Option<String>,
+) -> Result<Option<String>, String> {
+    let cookies = normalize_cookie_browser(cookies)?;
     tauri::async_runtime::spawn_blocking(move || {
         let tmp_dir = std::env::temp_dir().join(format!("likey-lyrics-{}", std::process::id()));
         std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
         let prefix = tmp_dir.join("sub");
         let watch = format!("https://www.youtube.com/watch?v={video_id}");
         let _ = run_ytdl(
-            &[
-                "--skip-download",
-                "--write-subs",
-                "--write-auto-subs",
-                "--sub-format",
-                "vtt",
-                "--no-warnings",
-                "-o",
-                prefix.to_str().unwrap_or("sub"),
-                &watch,
-            ],
+            &with_cookies(
+                &[
+                    "--skip-download",
+                    "--write-subs",
+                    "--write-auto-subs",
+                    "--sub-format",
+                    "vtt",
+                    "--no-warnings",
+                    "-o",
+                    prefix.to_str().unwrap_or("sub"),
+                    &watch,
+                ],
+                cookies.as_deref(),
+            ),
             SEARCH_TIMEOUT,
         );
         let mut found: Option<String> = None;
@@ -347,5 +407,44 @@ mod tests {
         assert!(parse_ytdl_search(r#"{"entries":[]}"#)
             .expect("empty")
             .is_empty());
+    }
+
+    #[test]
+    fn normalize_cookie_browser_whitelist() {
+        assert_eq!(normalize_cookie_browser(None).unwrap(), None);
+        assert_eq!(normalize_cookie_browser(Some(String::new())).unwrap(), None);
+        assert_eq!(
+            normalize_cookie_browser(Some(" Safari ".to_string()))
+                .unwrap()
+                .as_deref(),
+            Some("safari")
+        );
+        assert_eq!(
+            normalize_cookie_browser(Some("Chrome".to_string()))
+                .unwrap()
+                .as_deref(),
+            Some("chrome")
+        );
+        assert!(normalize_cookie_browser(Some("steam".to_string())).is_err());
+    }
+
+    #[test]
+    fn with_cookies_prepends_browser_flag() {
+        assert_eq!(
+            with_cookies(&["-J", "x"], Some("chrome")),
+            vec!["--cookies-from-browser", "chrome", "-J", "x"]
+        );
+        assert_eq!(with_cookies(&["-J", "x"], None), vec!["-J", "x"]);
+    }
+
+    #[test]
+    fn bot_hint_only_without_cookies() {
+        let err = "yt-dlp 失败: ERROR: Sign in to confirm you're not a bot".to_string();
+        assert!(bot_hint(err.clone(), false).contains("反爬"));
+        assert_eq!(bot_hint(err.clone(), true), err);
+        assert_eq!(
+            bot_hint("yt-dlp 失败: 其他错误".to_string(), false),
+            "yt-dlp 失败: 其他错误"
+        );
     }
 }

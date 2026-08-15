@@ -127,6 +127,20 @@ export async function loadOnlineSources(): Promise<readonly PersistedSource[]> {
   return (await store.get<readonly PersistedSource[]>('onlineSources')) ?? []
 }
 
+/** YouTube 音源 Cookie 来源（浏览器名，'' = 无）。 */
+export async function saveYoutubeCookies(browser: string): Promise<void> {
+  const store = await getStore()
+  if (store === null) return
+  await store.set('youtubeCookies', browser)
+  await store.save()
+}
+
+export async function loadYoutubeCookies(): Promise<string> {
+  const store = await getStore()
+  if (store === null) return ''
+  return (await store.get<string>('youtubeCookies')) ?? ''
+}
+
 /** 已下载曲目档案（含溯源与完整元数据；新字段可选，兼容旧记录）。 */
 export interface PersistedDownload {
   readonly id: string

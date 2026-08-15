@@ -50,6 +50,8 @@ export function OnlineSourcePanel() {
   const activate = useOnlineSourceStore((s) => s.activate)
   const addSource = useOnlineSourceStore((s) => s.addSource)
   const removeSource = useOnlineSourceStore((s) => s.removeSource)
+  const youtubeCookies = useOnlineSourceStore((s) => s.youtubeCookies)
+  const setYoutubeCookies = useOnlineSourceStore((s) => s.setYoutubeCookies)
   const playTrack = useQueueStore((s) => s.playTrack)
   const libraryTracks = useLibraryStore((s) => s.tracks)
   const setLyricOverride = useLyricOverrideStore((s) => s.set)
@@ -149,7 +151,7 @@ export function OnlineSourcePanel() {
     setHint(null)
     try {
       if (activeSource?.native === 'youtube') {
-        const tracks = await ytdlSearch(keyword, 30)
+        const tracks = await ytdlSearch(keyword, 30, cookies)
         setResults(
           tracks.map((t) => ({
             songmid: t.videoId,
@@ -183,7 +185,7 @@ export function OnlineSourcePanel() {
     try {
       let url: string | null
       if (activeSource?.native === 'youtube') {
-        url = await ytdlUrl(song.songmid)
+        url = await ytdlUrl(song.songmid, cookies)
       } else {
         const runtime = runtimeRef.current
         if (runtime === null) return
@@ -210,7 +212,7 @@ export function OnlineSourcePanel() {
     if (activeSource?.native === 'youtube') {
       try {
         setHint('正在抓取字幕…')
-        const lrc = await ytdlLyrics(song.songmid)
+        const lrc = await ytdlLyrics(song.songmid, cookies)
         if (lrc === null || lrc.trim() === '') {
           setHint('该视频没有可用字幕（歌词版视频通常有）')
           return
@@ -255,10 +257,10 @@ export function OnlineSourcePanel() {
       let url: string | null
       let lyrics: string | null = null
       if (activeSource?.native === 'youtube') {
-        url = await ytdlUrl(song.songmid)
+        url = await ytdlUrl(song.songmid, cookies)
         // 歌词可选：字幕缺失不阻断下载
         try {
-          lyrics = await ytdlLyrics(song.songmid)
+          lyrics = await ytdlLyrics(song.songmid, cookies)
         } catch {
           lyrics = null
         }
@@ -335,6 +337,8 @@ export function OnlineSourcePanel() {
   }
 
   const activeSource = sources.find((s) => s.id === activeId)
+  /** YouTube 浏览器 Cookie（防反爬）；未选择时传 undefined。 */
+  const cookies = youtubeCookies === '' ? undefined : youtubeCookies
 
   return (
     <section className="online-panel">
@@ -383,6 +387,22 @@ export function OnlineSourcePanel() {
             </option>
           ))}
         </select>
+        {activeSource?.native === 'youtube' && (
+          <select
+            value={youtubeCookies}
+            onChange={(event) => setYoutubeCookies(event.target.value)}
+            title="YouTube 反爬：从浏览器读取登录 Cookie（Safari 需在系统设置中授予 Likey 完全磁盘访问权限）"
+          >
+            <option value="">Cookie 来源：无</option>
+            <option value="safari">Safari</option>
+            <option value="chrome">Chrome</option>
+            <option value="firefox">Firefox</option>
+            <option value="edge">Edge</option>
+            <option value="brave">Brave</option>
+            <option value="arc">Arc</option>
+            <option value="chromium">Chromium</option>
+          </select>
+        )}
         <button
           type="button"
           onClick={() => void handleSearch()}

@@ -96,17 +96,19 @@ export interface YtTrack {
   readonly thumbnail: string
 }
 
-/** YouTube 搜索（Rust 调 yt-dlp，无账号）。 */
-export async function ytdlSearch(query: string, limit = 20): Promise<YtTrack[]> {
-  return invoke<YtTrack[]>('ytdl_search', { query, limit })
+/**
+ * YouTube 搜索（Rust 调 yt-dlp；cookies 为浏览器 Cookie 来源，防反爬拦截）。
+ */
+export async function ytdlSearch(query: string, limit = 20, cookies?: string): Promise<YtTrack[]> {
+  return invoke<YtTrack[]>('ytdl_search', { query, limit, cookies: cookies ?? null })
 }
 
-/** YouTube 取流地址（强制 m4a/AAC，WKWebView 不支持 Opus/WebM）。 */
-export async function ytdlUrl(videoId: string): Promise<string> {
-  return invoke<string>('ytdl_url', { videoId })
+/** YouTube 取流地址（强制 m4a/AAC，WKWebView 不支持 Opus/WebM；可选 Cookie）。 */
+export async function ytdlUrl(videoId: string, cookies?: string): Promise<string> {
+  return invoke<string>('ytdl_url', { videoId, cookies: cookies ?? null })
 }
 
-/** YouTube 字幕歌词（yt-dlp 抓 VTT → LRC；无字幕返回 null）。 */
-export async function ytdlLyrics(videoId: string): Promise<string | null> {
-  return invoke<string | null>('ytdl_lyrics', { videoId })
+/** YouTube 字幕歌词（yt-dlp 抓 VTT → LRC；无字幕返回 null；可选 Cookie）。 */
+export async function ytdlLyrics(videoId: string, cookies?: string): Promise<string | null> {
+  return invoke<string | null>('ytdl_lyrics', { videoId, cookies: cookies ?? null })
 }
